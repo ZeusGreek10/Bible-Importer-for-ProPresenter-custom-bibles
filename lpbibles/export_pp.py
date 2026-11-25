@@ -25,7 +25,7 @@ from lxml import etree
 from lxml.etree import Element, SubElement, tostring
 
 from .books import BOOKS
-from .model import BibleError, ParsedBible
+from .model import BibleError, ParsedBible, xml_safe
 from .biblecom_pp import construct_metadataxmls, toxml
 from .paths import resource_path
 
@@ -47,14 +47,15 @@ def usx_book(pb: ParsedBible, book: int) -> bytes:
 
 def synthetic_metadata(pb: ParsedBible) -> dict:
     """The Bible.com-style details `construct_metadataxmls` needs, for a Bible that did not come from Bible.com."""
+    x = xml_safe
     books = []
     for b in sorted(pb.verses):
-        books.append({"usfm": BOOKS[b - 1][0], "canon": "ot" if b <= 39 else "nt", "human": pb.name_of(b, 1),
-                      "human_long": pb.name_of(b, 0), "abbreviation": pb.name_of(b, 2)})
-    return {"title": pb.name or pb.short, "local_title": pb.name or pb.short, "abbreviation": pb.short,
-            "local_abbreviation": pb.short,
-            "language": {"iso_639_3": pb.lang_code or "eng", "name": pb.language or "English",
-                         "text_direction": pb.direction or "ltr"},
+        books.append({"usfm": BOOKS[b - 1][0], "canon": "ot" if b <= 39 else "nt", "human": x(pb.name_of(b, 1)),
+                      "human_long": x(pb.name_of(b, 0)), "abbreviation": x(pb.name_of(b, 2))})
+    return {"title": x(pb.name or pb.short), "local_title": x(pb.name or pb.short), "abbreviation": x(pb.short),
+            "local_abbreviation": x(pb.short),
+            "language": {"iso_639_3": x(pb.lang_code or "eng"), "name": x(pb.language or "English"),
+                         "text_direction": x(pb.direction or "ltr")},
             "books": books}
 
 
@@ -91,7 +92,7 @@ def write_rvbible(pb: ParsedBible, path: Path) -> Path:
         folder = Path(tmp) / "bible"
         write_files(pb, folder)
         part = shutil.make_archive(str(Path(tmp) / "archive"), "zip", str(folder))
-        tmp_target = path.with_name(path.name + ".part")
+        tmp_target = path.with_name(f".{path.name}.{uuid4().hex[:10]}.part")
         shutil.copyfile(part, tmp_target)
         os.replace(tmp_target, path)
     return path
@@ -121,26 +122,54 @@ def unique_path(folder: Path, base: str, ext: str) -> Path:
 
 def copy_without_overwriting(src: Path, folder: Path) -> Path:
     """Copies a file into a folder under its own name, or "name (2)", "name (3)"… when a file with that name is
-    already there. A file that exists is never replaced, even if another program creates it a moment before."""
+    already there.
+
+    The copy is written under a temporary name first and then given its final name in one step that fails if that
+    name is taken, so (1) a file that exists is never replaced, even if another program creates it a moment
+    before, and (2) a copy that fails or is cut off half way never leaves a half-written file under a real name
+    (ProPresenter on Mac can crash on a broken Bible file)."""
     src = Path(src)
     folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
     data = src.read_bytes()
-    n = 1
-    while True:
-        dest = folder / (src.name if n == 1 else f"{src.stem} ({n}){src.suffix}")
+    part = folder / f".{src.stem}.{uuid4().hex[:10]}.part"
+    try:
+        part.write_bytes(data)
+        n = 1
+        while True:
+            dest = folder / (src.name if n == 1 else f"{src.stem} ({n}){src.suffix}")
+            try:
+                os.link(part, dest)          # fails if dest exists: nothing is ever replaced
+                return dest
+            except FileExistsError:
+                n += 1
+            except OSError:                  # a disk without hard links (for example exFAT): rename if the name is free
+                if dest.exists():
+                    n += 1
+                    continue
+                try:
+                    os.rename(part, dest)    # on Windows this also fails if dest exists
+                    return dest
+                except FileExistsError:
+                    n += 1
+    finally:
         try:
-            with open(dest, "xb") as f:       # "x": fails if the file exists instead of replacing it
-                f.write(data)
-            return dest
-        except FileExistsError:
-            n += 1
+            part.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def install_mac(rvbible: Path, folder: Optional[Path] = None) -> Path:
     """Puts the .rvbible where ProPresenter on Mac looks. An existing file with the same name is kept: the new one
-    gets "(2)" in its name."""
-    return copy_without_overwriting(rvbible, folder or mac_bible_folder())
+    gets "(2)" in its name. If the older system-wide folder is the one in use but cannot be written (it needs an
+    administrator), the per-user folder is used."""
+    if folder is not None:
+        return copy_without_overwriting(rvbible, folder)
+    target = mac_bible_folder()
+    try:
+        return copy_without_overwriting(rvbible, target)
+    except PermissionError:
+        return copy_without_overwriting(rvbible, Path.home() / MAC_RELATIVE)
 
 
 def windows_bible_folder(programdata: Optional[str] = None) -> Path:
@@ -159,11 +188,20 @@ _INSTALLED = re.compile(r"InstalledBiblesNew=(?P<array>\[[^\]]*?]);?")
 
 
 def _read_installed(pref: Path) -> list[str]:
+    """The Bibles ProPresenter lists. If the file cannot be read, stop: writing it again would drop the others."""
     try:
-        m = _INSTALLED.match(pref.read_text(encoding="utf-8"))
-        return json.loads(m.group("array")) if m else []
-    except (OSError, ValueError, AttributeError):
+        text = pref.read_text(encoding="utf-8")
+    except OSError:
+        raise BibleError("ProPresenter's Bible list could not be read.")
+    if not text.strip():
         return []
+    m = _INSTALLED.match(text)
+    try:
+        if not m:
+            raise ValueError
+        return json.loads(m.group("array"))
+    except ValueError:
+        raise BibleError("ProPresenter's Bible list is not in the form this program knows, so it was left alone.")
 
 
 def windows_free_bibles(bibles_folder: Optional[Path] = None, available: Optional[Path] = None) -> list[dict]:

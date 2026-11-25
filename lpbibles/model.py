@@ -32,9 +32,31 @@ class Entry:
     language_native: str = ""  # "Nederlands" when the catalog knows it
 
 
+# Characters XML cannot hold (everything below 0x20 except tab, line feed and carriage return).
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+
+# Names Windows will not accept as a file name (with or without an extension).
+WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
+
+
+def xml_safe(text: str) -> str:
+    """Text without the control characters that make an XML file invalid."""
+    return _CONTROL.sub("", text or "")
+
+
+def safe_file_stem(text: str, limit: int = 80) -> str:
+    """A name that is safe as a file name on Mac and Windows (no forbidden characters, no reserved names)."""
+    t = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text or "").strip(" .")[:limit].strip(" .")
+    if not t:
+        return "Bible"
+    if t.split(".")[0].upper() in WINDOWS_RESERVED:
+        t = "_" + t
+    return t
+
+
 def clean_text(text: str) -> str:
     """Removes leftover markup and tidies spaces in one verse."""
-    t = text or ""
+    t = xml_safe(text or "")
     if "<" in t:
         t = re.sub(r"<[^>]+>", "", t)
     t = t.replace("¶", "")

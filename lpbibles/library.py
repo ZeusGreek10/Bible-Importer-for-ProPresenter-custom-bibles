@@ -15,8 +15,9 @@ import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
+from uuid import uuid4
 
-from .model import BibleError, ParsedBible, from_dense
+from .model import WINDOWS_RESERVED, BibleError, ParsedBible, from_dense
 
 FORMAT = "bible-importer-1"
 NUMBERINGS = {"kjv": "KJV (English)", "synodal": "Synodal (Russian)"}
@@ -45,13 +46,23 @@ def default_numbering(language: str, lang_code: str, name: str) -> str:
 
 def make_code(short: str, name: str) -> str:
     code = re.sub(r"[^a-z0-9]", "", (short or name).lower())[:12]
+    if code.upper() in WINDOWS_RESERVED:        # "con", "nul"… cannot be file names on Windows
+        code += "-bible"
     return code or "bible"
 
 
 def _atomic_write(path: Path, data: str) -> None:
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(data, encoding="utf-8")
-    os.replace(tmp, path)
+    """Writes a file completely or not at all (a temporary name, flushed to the disk, then moved into place)."""
+    tmp = path.with_name(f".{path.name}.{uuid4().hex[:10]}.tmp")
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 def _locked(method):
@@ -76,17 +87,53 @@ class Library:
     # ---- reading --------------------------------------------------------------------------------
 
     def _load(self) -> None:
+        """Reads the index. A damaged index is set aside (index.json.bad) and every Bible file on the disk is listed
+        again, so a Bible that is saved is never forgotten and never replaced by a new one with the same code."""
         self.items = []
-        if not self.index_path.exists():
-            return
+        changed = False
+        if self.index_path.exists():
+            try:
+                doc = json.loads(self.index_path.read_text(encoding="utf-8"))
+                for d in doc.get("bibles", []):
+                    item = Installed(**{k: d.get(k, "") for k in Installed.__dataclass_fields__})
+                    if (self.folder / f"{item.code}.json").exists():
+                        self.items.append(item)
+                    else:
+                        changed = True
+            except (ValueError, TypeError, OSError, AttributeError):
+                try:
+                    os.replace(self.index_path, self.folder / f"index.json.bad-{uuid4().hex[:6]}")
+                except OSError:
+                    pass
+                changed = True
+        # Bible files the index does not know about (a lost index, or a crash between the two writes)
+        known = {i.code for i in self.items}
+        for path in sorted(self.folder.glob("*.json")):
+            if path.name == "index.json" or path.stem in known or not re.fullmatch(r"[a-z0-9-]+", path.stem):
+                continue
+            adopted = self._adopt(path)
+            if adopted is not None:
+                self.items.append(adopted)
+                changed = True
+        if changed:
+            try:
+                self._save_index()
+            except OSError:
+                pass
+
+    def _adopt(self, path: Path) -> Optional[Installed]:
         try:
-            doc = json.loads(self.index_path.read_text(encoding="utf-8"))
-            for d in doc.get("bibles", []):
-                item = Installed(**{k: d.get(k, "") for k in Installed.__dataclass_fields__})
-                if (self.folder / f"{item.code}.json").exists():
-                    self.items.append(item)
-        except (ValueError, TypeError, OSError):
-            self.items = []   # a damaged index: the Bible files are kept, just not listed
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            if doc.get("format") != FORMAT:
+                return None
+            return Installed(code=path.stem, name=str(doc.get("name") or path.stem), short=str(doc.get("short") or path.stem),
+                             language=str(doc.get("language") or ""), lang_code=str(doc.get("lang_code") or ""),
+                             source=str(doc.get("source") or "file"), source_key=str(doc.get("source_key") or ""),
+                             numbering=doc.get("numbering") if doc.get("numbering") in NUMBERINGS else
+                             default_numbering(str(doc.get("language") or ""), str(doc.get("lang_code") or ""), str(doc.get("name") or "")),
+                             copyright=str(doc.get("copyright") or ""))
+        except (OSError, ValueError, AttributeError):
+            return None
 
     def _save_index(self) -> None:
         _atomic_write(self.index_path, json.dumps({"format": FORMAT, "bibles": [asdict(i) for i in self.items]},
@@ -130,26 +177,32 @@ class Library:
         else:
             base = make_code(pb.short, pb.name)
             code, n = base, 2
-            while self.get(code):
+            while self.get(code) or (self.folder / f"{code}.json").exists():     # never take the name of a file that is there
                 code = f"{base}-{n}"
                 n += 1
+        numbering = existing.numbering if existing else default_numbering(pb.language, pb.lang_code, pb.name)
         doc = {"format": FORMAT, "code": code, "name": pb.name, "short": pb.short, "language": pb.language,
                "lang_code": pb.lang_code, "direction": pb.direction, "books": pb.dense(),
-               "book_names": {str(k): list(v) for k, v in pb.book_names.items()}}
+               "book_names": {str(k): list(v) for k, v in pb.book_names.items()},
+               "source": source, "source_key": source_key, "numbering": numbering, "copyright": pb.copyright}
         if pb.usx and pb.source_meta:     # Bible.com: what the ProPresenter file is made from
             doc["usx"] = {k: v.decode("utf-8") for k, v in pb.usx.items()}
             doc["source_meta"] = pb.source_meta
         _atomic_write(self.folder / f"{code}.json", json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
         item = Installed(code=code, name=pb.name, short=pb.short or pb.name[:10], language=pb.language,
                          lang_code=pb.lang_code, source=source, source_key=source_key,
-                         numbering=existing.numbering if existing else default_numbering(pb.language, pb.lang_code, pb.name),
-                         copyright=pb.copyright)
+                         numbering=numbering, copyright=pb.copyright)
         if existing:
             self.items[self.items.index(existing)] = item
         else:
             self.items.append(item)
         self._save_index()
         return item
+
+    @_locked
+    def all(self) -> list:
+        """A copy of the list of saved Bibles (safe to use while the export thread saves another one)."""
+        return list(self.items)
 
     @_locked
     def disk_size(self) -> int:

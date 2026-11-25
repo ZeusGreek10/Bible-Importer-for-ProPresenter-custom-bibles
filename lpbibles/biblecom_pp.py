@@ -16,6 +16,7 @@ from lxml import etree as ElementTree
 from lxml.etree import Element, SubElement, tostring
 
 from .biblecom_html import parse_chapter
+from .model import xml_safe
 from .paths import resource_path
 
 
@@ -107,14 +108,16 @@ def construct_metadataxmls(output_file_loc, book_metadata):
 
 
 def slim_metadata(meta: dict) -> dict:
-    """Only what `construct_metadataxmls` reads (the full Bible.com answer is large)."""
+    """Only what `construct_metadataxmls` reads (the full Bible.com answer is large).
+    Control characters are removed, because XML cannot hold them (nothing changes for normal text)."""
+    x = xml_safe
     lang = meta.get("language") or {}
     return {
-        "title": meta.get("title", ""), "local_title": meta.get("local_title", ""),
-        "abbreviation": meta.get("abbreviation", ""), "local_abbreviation": meta.get("local_abbreviation", ""),
-        "language": {"iso_639_3": lang.get("iso_639_3", ""), "name": lang.get("name", ""),
-                     "text_direction": lang.get("text_direction", "ltr")},
-        "books": [{"usfm": b.get("usfm", ""), "canon": b.get("canon", ""), "human": b.get("human", ""),
-                   "human_long": b.get("human_long", ""), "abbreviation": b.get("abbreviation", "")}
+        "title": x(meta.get("title", "")), "local_title": x(meta.get("local_title", "")),
+        "abbreviation": x(meta.get("abbreviation", "")), "local_abbreviation": x(meta.get("local_abbreviation", "")),
+        "language": {"iso_639_3": x(lang.get("iso_639_3", "")), "name": x(lang.get("name", "")),
+                     "text_direction": x(lang.get("text_direction", "ltr"))},
+        "books": [{"usfm": x(b.get("usfm", "")), "canon": x(b.get("canon", "")), "human": x(b.get("human", "")),
+                   "human_long": x(b.get("human_long", "")), "abbreviation": x(b.get("abbreviation", ""))}
                   for b in (meta.get("books") or [])],
     }

@@ -42,7 +42,7 @@ def load_list(path: Path, library: Library) -> list[ListItem]:
             if code and library.get(code) is None:
                 code = ""
             if not code and entry is not None:
-                code = next((i.code for i in library.items if i.source_key == entry.key), "")
+                code = next((i.code for i in library.all() if i.source_key == entry.key), "")
             if entry is None and not code:
                 continue
             numbering = d.get("numbering") if d.get("numbering") in NUMBERINGS else "kjv"

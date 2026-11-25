@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import sys
 import tempfile
@@ -14,7 +15,7 @@ from PySide6.QtWidgets import (QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEd
                                QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from .. import catalog, export_lp, export_pp, importers
-from ..export_pp import unique_path
+from ..model import safe_file_stem
 from ..backend import Backend
 from ..catalog import Language
 from ..library import Library, default_numbering
@@ -41,8 +42,8 @@ def default_platform() -> str:
 
 
 def safe_name(text: str) -> str:
-    t = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text).strip(" .")
-    return t or "Bible"
+    """A name that is safe as a file name on Mac and Windows."""
+    return safe_file_stem(text)
 
 
 def human_size(n: int) -> str:
@@ -233,6 +234,7 @@ class MainWindow(QMainWindow):
         self.list_layout.setSpacing(0)
         sb.addWidget(self.list_frame)
         self.message = QLabel("")
+        self.message.setTextFormat(Qt.PlainText)
         self.message.setObjectName("message")
         self.message.setWordWrap(True)
         self.message.setContentsMargins(2, 8, 2, 0)
@@ -252,6 +254,7 @@ class MainWindow(QMainWindow):
         self.drop.files_dropped.connect(self.import_files)
         fpl.addWidget(self.drop, 1)
         self.file_message = QLabel("")
+        self.file_message.setTextFormat(Qt.PlainText)
         self.file_message.setObjectName("message")
         self.file_message.setWordWrap(True)
         fpl.addWidget(self.file_message)
@@ -286,6 +289,7 @@ class MainWindow(QMainWindow):
         dl.setContentsMargins(14, 12, 14, 12)
         dl.setSpacing(4)
         self.done_head = QLabel("")
+        self.done_head.setTextFormat(Qt.PlainText)
         self.done_head.setObjectName("donehead")
         self.done_text = QLabel("")
         self.done_text.setObjectName("donetext")
@@ -330,6 +334,7 @@ class MainWindow(QMainWindow):
         dr.setContentsMargins(0, 0, 0, 0)
         dr.setSpacing(8)
         self.path_label = QLabel("")
+        self.path_label.setTextFormat(Qt.PlainText)
         self.path_label.setObjectName("pathbox")
         self.choose_btn = QPushButton("Choose…")
         self.choose_btn.setObjectName("btn")
@@ -483,7 +488,7 @@ class MainWindow(QMainWindow):
         item = ListItem(key=entry.key, entry=entry, short=entry.short, name=entry.name,
                         status="saved" if saved else "waiting", note="saved on this computer" if saved else "",
                         numbering=default_numbering(entry.language, entry.lang_code, entry.name),
-                        code=next((i.code for i in self.library.items if i.source_key == entry.key), ""))
+                        code=next((i.code for i in self.library.all() if i.source_key == entry.key), ""))
         self.items.append(item)
         row = self.rows.get(entry.key)
         if row:
@@ -553,10 +558,10 @@ class MainWindow(QMainWindow):
         """The cleanup: deletes every saved copy (also those of Bibles that are no longer in the list)."""
         if self.exporting:
             return
-        n = len(self.library.items)
+        n = len(self.library.all())
         if not n or not self._confirm_delete_all(n, human_size(self.library.disk_size())):
             return
-        for saved in list(self.library.items):
+        for saved in self.library.all():
             self.library.remove(saved.code)
         for item in list(self.items):
             if item.entry is None:
@@ -578,7 +583,10 @@ class MainWindow(QMainWindow):
             self._save_list()
 
     def _reset_done(self) -> None:
-        """Something changed: the old 'done' marks and the done box no longer describe the list."""
+        """Something changed: the old 'done' marks and the done box no longer describe the list.
+        (Not while an export is running: its marks are still being made.)"""
+        if self.exporting:
+            return
         for i in self.items:
             if i.status in ("done", "failed"):
                 i.status = "saved" if self.library.is_installed(i.key) else "waiting"
@@ -619,7 +627,7 @@ class MainWindow(QMainWindow):
             self._save_list()
 
     def _refresh_cleanup(self) -> None:
-        n = len(self.library.items)
+        n = len(self.library.all())
         self.cleanup_btn.setVisible(n > 0)
         if n:
             self.cleanup_btn.setText(f"Delete all saved Bibles ({n} · {human_size(self.library.disk_size())})…")
@@ -812,17 +820,15 @@ class MainWindow(QMainWindow):
 
     def _write_one(self, pb: ParsedBible, job: dict, mode: str, dest: Path, fmt: str) -> str:
         base = safe_name(pb.short or pb.name)
-        if fmt == "lp":
-            path = unique_path(dest, base, ".json")
-            export_lp.write(pb, path, job["numbering"])
-            return str(path)
-        if mode == "install":
-            with tempfile.TemporaryDirectory() as tmp:
-                rv = export_pp.write_rvbible(pb, Path(tmp) / f"{base}.rvbible")
-                return str(export_pp.install_mac(rv))
-        path = unique_path(dest, base, ".rvbible")
-        export_pp.write_rvbible(pb, path)
-        return str(path)
+        with tempfile.TemporaryDirectory() as tmp:
+            if fmt == "lp":
+                made = export_lp.write(pb, Path(tmp) / f"{base}.json", job["numbering"])
+            else:
+                made = export_pp.write_rvbible(pb, Path(tmp) / f"{base}.rvbible")
+            # the file is complete before it reaches the real folder, and an existing file is never replaced
+            if mode == "install":
+                return str(export_pp.install_mac(made))
+            return str(export_pp.copy_without_overwriting(made, dest))
 
     # ---- results coming back --------------------------------------------------------------------------
 
@@ -870,6 +876,11 @@ class MainWindow(QMainWindow):
             self.set_message(message, "error")
         elif key == "export":
             self.exporting = False
+            for i in self.items:
+                if i.status == "busy":
+                    i.status = "saved" if self.library.is_installed(i.key) else "waiting"
+                    i.note = ""
+                    i.fraction = None
             self.set_message(message, "error")
             self._refresh_panel()
 
@@ -930,7 +941,7 @@ class MainWindow(QMainWindow):
                 buttons.append(("Show the files in Finder", self._show_install_folder))
         else:
             folder = d["dest"]
-            text = f'Saved in <b style="color:{theme.TEXT}">{folder}</b><br>'
+            text = f'Saved in <b style="color:{theme.TEXT}">{html.escape(folder)}</b><br>'
             if d["fmt"] == "lp":
                 text += "In Live Presenter, use Import a file and pick them."
             elif self.platform != "mac":

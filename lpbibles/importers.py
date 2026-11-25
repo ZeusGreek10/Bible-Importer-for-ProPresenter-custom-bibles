@@ -30,6 +30,17 @@ SKIP = {"note", "f", "x", "fig", "ref", "remark", "rt", "title", "head", "h", "t
 EXTENSIONS = (".json", ".xml", ".zefania", ".osis", ".usx", ".usfm", ".sfm", ".usf", ".usfx", ".rvbible", ".zip")
 
 
+def _parser():
+    """XML reader for files we did not make: no external files or network, and entities are not expanded."""
+    return etree.XMLParser(recover=True, huge_tree=True, resolve_entities=False, no_network=True, load_dtd=False)
+
+
+def _ignored(name: str) -> bool:
+    """Junk a Mac adds to zip files (__MACOSX folders and ._ files)."""
+    base = name.replace("\\", "/").rsplit("/", 1)[-1]
+    return name.startswith("__MACOSX/") or "/__MACOSX/" in name or base.startswith("._")
+
+
 def _local(tag) -> str:
     if not isinstance(tag, str):
         return ""
@@ -90,7 +101,7 @@ def _walk_milestones(root, on_start, on_end, on_text, skip_el=None) -> None:
 # ---- Zefania -----------------------------------------------------------------------------------------
 
 def parse_zefania(data: bytes) -> ParsedBible:
-    root = etree.fromstring(data, etree.XMLParser(recover=True, huge_tree=True))
+    root = etree.fromstring(data, _parser())
     pb = ParsedBible(name=root.get("biblename") or "")
     for info in root.iter():
         n = _local(info.tag)
@@ -127,7 +138,7 @@ def parse_zefania(data: bytes) -> ParsedBible:
 # ---- OSIS --------------------------------------------------------------------------------------------
 
 def parse_osis(data: bytes) -> ParsedBible:
-    root = etree.fromstring(data, etree.XMLParser(recover=True, huge_tree=True))
+    root = etree.fromstring(data, _parser())
     pb = ParsedBible()
     for el in root.iter():
         n = _local(el.tag)
@@ -167,7 +178,12 @@ def parse_osis(data: bytes) -> ParsedBible:
             state["ref"] = None
             state["container"] = False
 
-    _walk_milestones(root, on_start, on_end, lambda t: state["buf"].append(t) if state["ref"] else None)
+    def on_end_with_space(el, name) -> None:
+        if name in ("l", "lg", "p") and state["ref"]:
+            state["buf"].append(" ")        # poetry lines and paragraphs inside a verse
+        on_end(el, name)
+
+    _walk_milestones(root, on_start, on_end_with_space, lambda t: state["buf"].append(t) if state["ref"] else None)
     flush()
     return pb
 
@@ -177,7 +193,7 @@ def parse_osis(data: bytes) -> ParsedBible:
 def parse_usx(data: bytes, pb: Optional[ParsedBible] = None) -> ParsedBible:
     """One USX book (2.x with <verse number>, 3.x with <verse sid> and <verse eid>)."""
     pb = pb or ParsedBible()
-    root = etree.fromstring(data, etree.XMLParser(recover=True, huge_tree=True))
+    root = etree.fromstring(data, _parser())
     st = {"book": 0, "chapter": 0, "verse": 0, "buf": [], "open": False}
 
     def flush() -> None:
@@ -208,14 +224,18 @@ def parse_usx(data: bytes, pb: Optional[ParsedBible] = None) -> ParsedBible:
         if st["verse"]:
             st["buf"].append(t)
 
-    _walk_milestones(root, on_start, lambda e, n: None, on_text, _usx_heading)
+    def on_end(el, name) -> None:
+        if name == "para" and st["verse"]:
+            st["buf"].append(" ")       # the end of a paragraph or poetry line: a space, not glued words
+
+    _walk_milestones(root, on_start, on_end, on_text, _usx_heading)
     flush()
     return pb
 
 
 def parse_usfx(data: bytes) -> ParsedBible:
     pb = ParsedBible()
-    root = etree.fromstring(data, etree.XMLParser(recover=True, huge_tree=True))
+    root = etree.fromstring(data, _parser())
     st = {"book": 0, "chapter": 0, "verse": 0, "buf": []}
 
     def flush() -> None:
@@ -239,7 +259,11 @@ def parse_usfx(data: bytes) -> ParsedBible:
             flush()
             st["verse"] = 0
 
-    _walk_milestones(root, on_start, lambda e, n: None, lambda t: st["buf"].append(t) if st["verse"] else None,
+    def on_end(el, name) -> None:
+        if name in ("p", "q", "l", "b", "li") and st["verse"]:
+            st["buf"].append(" ")
+
+    _walk_milestones(root, on_start, on_end, lambda t: st["buf"].append(t) if st["verse"] else None,
                      _usfx_heading)
     flush()
     return pb
@@ -252,12 +276,15 @@ def _from_zip(data: bytes) -> ParsedBible:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
         raise BibleError("This file is not a valid zip file.")
-    names = zf.namelist()
+    names = [n for n in zf.namelist() if not _ignored(n)]
     usx = sorted(n for n in names if n.lower().endswith(".usx"))
     if usx:
         pb = ParsedBible()
         for n in usx:
-            parse_usx(zf.read(n), pb)
+            try:
+                parse_usx(zf.read(n), pb)
+            except etree.XMLSyntaxError:
+                continue          # one damaged book file: the others are still read (a Bible with too few books is refused)
         _read_pp_metadata(zf, pb)
         return pb
     if any(n.lower().endswith((".usfm", ".sfm", ".usf")) for n in names):
@@ -271,13 +298,13 @@ def _from_zip(data: bytes) -> ParsedBible:
 def _read_pp_metadata(zf: zipfile.ZipFile, pb: ParsedBible) -> None:
     """Name, short name and language from a ProPresenter .rvbible."""
     try:
-        rv = etree.fromstring(zf.read("rvmetadata.xml"))
+        rv = etree.fromstring(zf.read("rvmetadata.xml"), _parser())
         pb.name = (rv.findtext("name") or "").strip()
         pb.short = (rv.findtext("displayAbbreviation") or rv.findtext("abbreviation") or "").strip()
     except (KeyError, etree.XMLSyntaxError):
         pass
     try:
-        meta = etree.fromstring(zf.read("metadata.xml"))
+        meta = etree.fromstring(zf.read("metadata.xml"), _parser())
         pb.lang_code = (meta.findtext(".//language/iso") or "").strip()
         pb.language = (meta.findtext(".//language/name") or "").strip()
         pb.direction = "rtl" if (meta.findtext(".//language/scriptDirection") or "").lower() == "rtl" else "ltr"

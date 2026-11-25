@@ -38,6 +38,8 @@ def decode(data: dict, entry: Optional[Entry] = None) -> ParsedBible:
 
     Also accepts the same layout as a file chosen by hand.
     """
+    if not isinstance(data, dict):
+        raise BibleError("This JSON file is not a Bible file.")
     pb = ParsedBible()
     pb.name = str(data.get("translation") or data.get("name") or (entry.name if entry else ""))
     pb.short = str(data.get("abbreviation") or (entry.short if entry else "")).upper()

@@ -529,3 +529,45 @@ def test_cleanup_is_off_while_exporting(app, win):
     win._go_clicked()
     pump(app, lambda: not win.exporting)
     assert win.cleanup_btn.isEnabled()
+
+
+# ---- from the code review ------------------------------------------------------------------------------
+
+def test_adding_during_an_export_keeps_the_marks_of_finished_bibles(app, win):
+    win.backend.slow.add("getbible:slow")
+    add(win, "getbible:kjv")
+    add(win, "getbible:slow")
+    win._go_clicked()
+    assert pump(app, lambda: win._item("getbible:kjv").status == "done" and win._item("getbible:slow").status == "busy")
+    add(win, "getbible:web")                                   # the volunteer clicks + Add while it is exporting
+    assert win._item("getbible:kjv").status == "done" and win.exporting
+    win._go_clicked()
+    pump(app, lambda: not win.exporting)
+    assert win._item("getbible:kjv").status == "done"
+
+
+def test_names_from_catalogs_and_files_are_shown_as_plain_text(app, win, tmp_path):
+    from PySide6.QtCore import Qt
+    from lpbibles.ui.widgets import ListItem, ListItemRow
+    item = ListItem(key="k", entry=None, short="<i>X</i>", name="<b>Evil</b> Bible", status="saved", code="x")
+    row = ListItemRow(item)
+    assert row.name.textFormat() == Qt.PlainText and row.name.text() == "<b>Evil</b> Bible"
+    assert row.chip.textFormat() == Qt.PlainText and win.message.textFormat() == Qt.PlainText
+
+
+def test_the_folder_in_the_done_box_is_escaped(app, win, tmp_path):
+    win.folder = tmp_path / "<b>odd</b> & folder"
+    add(win, "getbible:kjv")
+    win._go_clicked()
+    assert finished(app, win)
+    assert "&lt;b&gt;odd&lt;/b&gt; &amp; folder" in win.done_text.text()
+
+
+def test_exported_files_have_safe_names(app, win, tmp_path):
+    win.backend.load_free  # (the fake catalog has a Bible whose short name we change below)
+    entry = win._entries_by_key()["getbible:kjv"]
+    entry.short, entry.name = "CON", "Console Bible"
+    add(win, "getbible:kjv")
+    win._go_clicked()
+    assert finished(app, win)
+    assert [p.name for p in (tmp_path / "out").iterdir()] == ["_CON.rvbible"]

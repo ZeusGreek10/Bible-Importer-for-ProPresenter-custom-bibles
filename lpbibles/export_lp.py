@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from uuid import uuid4
 
 from .books import BOOKS
 from .model import ParsedBible
@@ -46,7 +47,11 @@ def to_dict(pb: ParsedBible, numbering: str = "kjv") -> dict:
 
 def write(pb: ParsedBible, path: Path, numbering: str = "kjv") -> Path:
     path = Path(path)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(to_dict(pb, numbering), ensure_ascii=False), encoding="utf-8")
-    tmp.replace(path)
+    tmp = path.with_name(f".{path.name}.{uuid4().hex[:10]}.tmp")
+    try:
+        tmp.write_text(json.dumps(to_dict(pb, numbering), ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
     return path

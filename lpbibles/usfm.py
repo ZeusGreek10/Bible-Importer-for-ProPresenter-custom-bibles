@@ -20,6 +20,8 @@ _NOTE_SPANS = re.compile(
 # Markers that carry attributes after a "|" (\w word|strong="G1"\w*): keep the word, drop the attributes.
 _ATTRS = re.compile(r"\|[^\\|]*(?=\\[+a-z0-9]+\*)", re.I)
 # Closing character markers, and opening ones (one following space goes with them).
+# Milestones: \\ts\\*, \\zaln-s |x-strong="H1"\\*, \\zaln-e\\* … (they carry no text: removed, so the text after them is kept)
+_MILESTONE = re.compile(r"\\[A-Za-z][A-Za-z0-9\-]*(?:\s+[^\\]*)?\\\*")
 _CLOSE = re.compile(r"\\[+a-z0-9]+\*", re.I)
 _CHAR_OPEN = re.compile(
     r"\\\+?(w|wg|wh|wa|nd|add|wj|bk|qt|sc|tl|em|bd|it|bdit|no|sig|k|dc|ord|pn|png|addpn|lit|sup|ior|iqt|qs|"
@@ -37,6 +39,7 @@ _VERSE = re.compile(r"\s*(\d+)([a-z]?)(?:\s*[-–,]\s*(\d+)([a-z]?))?\s*(.*)", r
 def parse_book(text: str, out: ParsedBible, default_book: int = 0) -> None:
     """Adds the verses of one USFM book (one .usfm file) to `out`."""
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+    text = _MILESTONE.sub("", text)
     text = _NOTE_SPANS.sub("", text)
     text = _ATTRS.sub("", text)
     text = _CLOSE.sub("", text)
@@ -91,7 +94,8 @@ def parse_zip(data: bytes, out: Optional[ParsedBible] = None) -> ParsedBible:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
         raise BibleError("The downloaded file is not a valid zip file.")
-    names = sorted(n for n in zf.namelist() if n.lower().endswith((".usfm", ".sfm", ".usf")))
+    names = sorted(n for n in zf.namelist() if n.lower().endswith((".usfm", ".sfm", ".usf"))
+                   and not n.startswith("__MACOSX/") and "/__MACOSX/" not in n and not n.rsplit("/", 1)[-1].startswith("._"))
     if not names:
         raise BibleError("The zip file has no USFM books in it.")
     for n in names:
