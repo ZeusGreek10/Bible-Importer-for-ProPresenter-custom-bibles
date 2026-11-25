@@ -101,9 +101,9 @@ QLabel#st_fail {{ color: {ERROR}; font-weight: 700; font-size: 11px; }}
 QPushButton#x {{ background: {PANEL2}; color: {DIM}; border: none; border-radius: 5px; font-size: 10px; }}
 QPushButton#x:hover {{ background: {LINE}; color: {TEXT}; }}
 QPushButton#x:disabled {{ color: {LINE}; }}
-QPushButton#cleanup {{ background: transparent; border: none; color: {DIM}; font-size: 11px; font-weight: 600; padding: 2px 0; }}
-QPushButton#cleanup:hover {{ color: {ERROR}; }}
-QPushButton#cleanup:disabled {{ color: {LINE}; }}
+QPushButton#cleanup {{ background: {PANEL2}; color: {TEXT2}; border: none; border-radius: 6px; font-size: 11px; font-weight: 700; padding: 6px 12px; }}
+QPushButton#cleanup:hover {{ background: #4a2a2a; color: {ERROR}; }}
+QPushButton#cleanup:disabled {{ background: {PANEL2}; color: {LINE}; }}
 QProgressBar {{ background: {LINE}; border: none; border-radius: 2px; max-height: 4px; min-height: 4px; }}
 QProgressBar::chunk {{ background: {ORANGE}; border-radius: 2px; }}
 
