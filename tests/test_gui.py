@@ -388,3 +388,13 @@ def test_no_delete_while_exporting(app, win):
     assert not win.item_rows["getbible:kjv"].trash.isEnabled()
     win._go_clicked()
     pump(app, lambda: not win.exporting)
+
+
+def test_delete_question_says_what_goes_and_what_stays():
+    from lpbibles.ui.main_window import delete_message
+    m = delete_message("King James Version", False)
+    assert "Delete the saved copy of King James Version?" in m
+    assert "only deletes the copy that Bible Importer keeps on this computer" in m
+    assert "Files you saved in a folder, and Bibles already added to ProPresenter, stay as they are." in m
+    assert "download it again later" in m
+    assert "choosing the file again" in delete_message("My Bible", True) and "download it again" not in delete_message("My Bible", True)

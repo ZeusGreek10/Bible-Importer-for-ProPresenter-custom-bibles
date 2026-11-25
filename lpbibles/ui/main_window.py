@@ -52,6 +52,16 @@ def unique_path(folder: Path, base: str, ext: str) -> Path:
     return p
 
 
+def delete_message(name: str, from_file: bool) -> str:
+    """What the question before deleting a saved copy says (plain words: what goes, and what stays)."""
+    again = ("It came from a file, so it can only come back by choosing the file again." if from_file
+             else "You can download it again later.")
+    return (f"Delete the saved copy of {name}?\n\n"
+            "This only deletes the copy that Bible Importer keeps on this computer. "
+            "Files you saved in a folder, and Bibles already added to ProPresenter, stay as they are.\n\n"
+            + again)
+
+
 def hint_html(text: str) -> str:
     return text.replace("<b>", f'<b style="color:{theme.TEXT}">')
 
@@ -485,9 +495,7 @@ class MainWindow(QMainWindow):
         self._refresh_panel()
 
     def _confirm_delete(self, item: ListItem, from_file: bool) -> bool:
-        text = (f"Delete the saved copy of {item.name} from this computer?\n\n"
-                + ("It came from a file, so it can only come back by choosing the file again." if from_file
-                   else "You can download it again later. Files you already exported are not touched."))
+        text = delete_message(item.name, from_file)
         box = QMessageBox(QMessageBox.Question, "Delete saved copy", text, QMessageBox.NoButton, self)
         yes = box.addButton("Delete", QMessageBox.DestructiveRole)
         box.addButton("Keep it", QMessageBox.RejectRole)

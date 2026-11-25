@@ -301,7 +301,7 @@ class ListItemRow(QFrame):
         self.remove.setAccessibleName(f"Remove {item.short} from the list")
         self.remove.clicked.connect(lambda: self.remove_clicked.emit(self.key))
         self.trash = TrashButton()
-        self.trash.setToolTip("Delete the saved copy from this computer")
+        self.trash.setToolTip("Delete the copy this app keeps. Your saved files and ProPresenter are not touched.")
         self.trash.setAccessibleName(f"Delete the saved copy of {item.short}")
         self.trash.clicked.connect(lambda: self.delete_clicked.emit(self.key))
         g.addWidget(chipcell, 0, 0)
