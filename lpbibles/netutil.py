@@ -75,10 +75,13 @@ def download(url: str, *, headers: Optional[dict] = None, timeout: float = 30,
         with requests.get(url, headers=h, timeout=timeout, stream=True) as r:
             if r.status_code != 200:
                 raise NetworkError(f"The server answered {r.status_code}.")
-            total = int(r.headers.get("Content-Length") or 0)
+            try:
+                total = int(r.headers.get("Content-Length") or 0)
+            except ValueError:
+                total = 0
             chunks: list[bytes] = []
             done = 0
-            for chunk in r.iter_content(65536):
+            for chunk in r.iter_content(8192):
                 check(cancel)
                 chunks.append(chunk)
                 done += len(chunk)

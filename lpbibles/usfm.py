@@ -15,8 +15,9 @@ from .books import book_number
 from .model import BibleError, ParsedBible
 
 # Notes and the like: removed together with their content.
+# A note that is never closed ends at the next verse or chapter, so it cannot swallow the verses after it.
 _NOTE_SPANS = re.compile(
-    r"\\(f|fe|ef|x|ex|fig|va|vp|ca|cp|zw|esb)\b.*?\\\1\*", re.S)
+    r"\\(f|fe|ef|x|ex|fig|va|vp|ca|cp|zw|esb)\b(?:(?!\\(?:v|c|id)\s).)*?(?:\\\1\*|(?=\\(?:v|c|id)\s)|\Z)", re.S)
 # Markers that carry attributes after a "|" (\w word|strong="G1"\w*): keep the word, drop the attributes.
 _ATTRS = re.compile(r"\|[^\\|]*(?=\\[+a-z0-9]+\*)", re.I)
 # Closing character markers, and opening ones (one following space goes with them).

@@ -212,13 +212,13 @@ def install(p: Prepared, running: Callable[[], bool] = is_propresenter_running) 
     if any(t.exists() for t in targets):
         raise BibleError("A folder with the same name is already in ProPresenter's Bibles folder.")
     backup: Optional[Path] = None
-    copied: list[Path] = []
+    copied: list[Path] = []           # every folder we started to make (a half copied one is removed as well)
     tmp = folder / f".{PREF_NAME}.{uuid4().hex[:8]}.part"
     try:
         backup = _backup(pref)
         for src, dst in zip(p.folders, targets):
-            shutil.copytree(src, dst)
             copied.append(dst)
+            shutil.copytree(src, dst)
         shutil.copyfile(p.new_pref, tmp)
         os.replace(tmp, pref)                     # the list changes last: until now ProPresenter sees nothing new
     except OSError as e:

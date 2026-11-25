@@ -16,7 +16,7 @@ from lxml import etree
 
 from . import getbible, usfm
 from .books import BOOKS, book_number
-from .model import BibleError, ParsedBible
+from .model import BibleError, ParsedBible, xml_safe
 
 OSIS_IDS = ["Gen", "Exod", "Lev", "Num", "Deut", "Josh", "Judg", "Ruth", "1Sam", "2Sam", "1Kgs", "2Kgs", "1Chr", "2Chr",
             "Ezra", "Neh", "Esth", "Job", "Ps", "Prov", "Eccl", "Song", "Isa", "Jer", "Lam", "Ezek", "Dan", "Hos", "Joel",
@@ -26,6 +26,8 @@ OSIS_IDS = ["Gen", "Exod", "Lev", "Num", "Deut", "Josh", "Judg", "Ruth", "1Sam",
 OSIS_TO_NUM = {x.lower(): i + 1 for i, x in enumerate(OSIS_IDS)}
 
 SKIP = {"note", "f", "x", "fig", "ref", "remark", "rt", "title", "head", "h", "toc", "fr", "xo", "ft", "fq", "xt"}
+
+MAX_FILE = 200 * 1024 * 1024        # no real Bible is this big: a bigger file is refused (a zip can hold far more than it weighs)
 
 EXTENSIONS = (".json", ".xml", ".zefania", ".osis", ".usx", ".usfm", ".sfm", ".usf", ".usfx", ".rvbible", ".zip")
 
@@ -55,7 +57,12 @@ def _verse_inner_text(el) -> str:
         if node.text:
             parts.append(node.text)
         for child in node:
-            if _local(child.tag) not in SKIP:
+            name = _local(child.tag)
+            if not isinstance(child.tag, str):      # a comment or a processing instruction: not text of the verse
+                pass
+            elif name not in SKIP:
+                if name in ("br", "lb"):
+                    parts.append(" ")               # a line break must not glue two words together
                 walk(child)
             if child.tail:
                 parts.append(child.tail)
@@ -106,7 +113,7 @@ def parse_zefania(data: bytes) -> ParsedBible:
     for info in root.iter():
         n = _local(info.tag)
         text = (info.text or "").strip()
-        if n == "title" and text and not pb.name:
+        if n == "title" and text and not pb.name and not any(_local(a.tag) in ("vers", "biblebook") for a in info.iterancestors()):
             pb.name = text
         elif n == "language" and text:
             pb.lang_code = text
@@ -150,7 +157,8 @@ def parse_osis(data: bytes) -> ParsedBible:
     state = {"ref": None, "container": False, "buf": []}
 
     def ref_of(osis_id: str) -> Optional[tuple[int, int, int]]:
-        parts = (osis_id or "").split(" ")[0].split(".")
+        first = (osis_id or "").split(" ")[0]
+        parts = first.rsplit(":", 1)[-1].split(".")           # "KJV:Ps.1.1": the part before the colon names the work
         if len(parts) >= 3 and parts[0].lower() in OSIS_TO_NUM and parts[1].isdigit() and parts[2].isdigit():
             return OSIS_TO_NUM[parts[0].lower()], int(parts[1]), int(parts[2])
         return None
@@ -161,6 +169,8 @@ def parse_osis(data: bytes) -> ParsedBible:
         state["buf"] = []
 
     def on_start(el, name) -> None:
+        if name == "lb" and state["ref"]:
+            state["buf"].append(" ")            # a line break inside a verse (poetry)
         if name == "verse":
             if el.get("eID"):
                 flush()
@@ -276,6 +286,8 @@ def _from_zip(data: bytes) -> ParsedBible:
         zf = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile:
         raise BibleError("This file is not a valid zip file.")
+    if sum(i.file_size for i in zf.infolist()) > MAX_FILE:
+        raise BibleError("This zip file is too big to be a Bible.")
     names = [n for n in zf.namelist() if not _ignored(n)]
     usx = sorted(n for n in names if n.lower().endswith(".usx"))
     if usx:
@@ -283,7 +295,7 @@ def _from_zip(data: bytes) -> ParsedBible:
         for n in usx:
             try:
                 parse_usx(zf.read(n), pb)
-            except etree.XMLSyntaxError:
+            except Exception:
                 continue          # one damaged book file: the others are still read (a Bible with too few books is refused)
         _read_pp_metadata(zf, pb)
         return pb
@@ -301,7 +313,7 @@ def _read_pp_metadata(zf: zipfile.ZipFile, pb: ParsedBible) -> None:
         rv = etree.fromstring(zf.read("rvmetadata.xml"), _parser())
         pb.name = (rv.findtext("name") or "").strip()
         pb.short = (rv.findtext("displayAbbreviation") or rv.findtext("abbreviation") or "").strip()
-    except (KeyError, etree.XMLSyntaxError):
+    except Exception:
         pass
     try:
         meta = etree.fromstring(zf.read("metadata.xml"), _parser())
@@ -314,7 +326,7 @@ def _read_pp_metadata(zf: zipfile.ZipFile, pb: ParsedBible) -> None:
                 pb.book_names[num] = (b.findtext("long") or "", b.findtext("short") or "", b.findtext("abbr") or "")
         if not pb.name:
             pb.name = (meta.findtext(".//identification/name") or "").strip()
-    except (KeyError, etree.XMLSyntaxError):
+    except Exception:
         pass
 
 
@@ -351,9 +363,16 @@ def read_files(paths: Iterable[Path]) -> ParsedBible:
     result: Optional[ParsedBible] = None
     for p in paths:
         try:
+            if p.stat().st_size > MAX_FILE:
+                raise BibleError(f"{p.name} is too big to be a Bible.")
             pb = parse_bytes(p.read_bytes(), p.name)
         except OSError:
             raise BibleError(f"{p.name} could not be opened.")
+        except BibleError:
+            raise
+        except (Exception, RecursionError):         # a damaged file is a plain message, never a Python error
+            raise BibleError(f"{p.name} is damaged or not a Bible file Bible Importer can read.")
+        pb.name, pb.short = xml_safe(pb.name), xml_safe(pb.short)
         if not pb.name:
             pb.name = p.stem
         if not pb.short:

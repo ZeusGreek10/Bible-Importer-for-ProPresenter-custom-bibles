@@ -33,7 +33,7 @@ class Entry:
 
 
 # Characters XML cannot hold (everything below 0x20 except tab, line feed and carriage return).
-_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ufffe\uffff]")
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]")   # also lone surrogates: they cannot be saved
 
 # Names Windows will not accept as a file name (with or without an extension).
 WINDOWS_RESERVED = {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
@@ -54,11 +54,31 @@ def safe_file_stem(text: str, limit: int = 80) -> str:
     return t
 
 
+_MARKUP = re.compile(r"<!--.*?-->|<\?.*?\?>|<(/?)([A-Za-z][A-Za-z0-9:_.-]*)([^<>]*)>", re.S)
+_TAG_NAMES = {"a", "b", "i", "u", "em", "strong", "span", "br", "p", "div", "sup", "sub", "font", "small", "big", "center",
+              "h1", "h2", "h3", "h4", "h5", "h6", "ul", "ol", "li", "table", "tr", "td", "th", "note", "ref", "q", "l", "lg",
+              "lb", "w", "add", "wj", "nd", "sc", "title", "seg", "hi", "foreign", "catchword", "reference", "verse", "chapter",
+              "milestone", "fi", "rf", "cm", "ts", "wh", "wg"}
+_SEPARATING = {"br", "p", "div", "li", "tr", "td", "th", "l", "lg", "lb", "q", "h1", "h2", "h3", "h4", "h5", "h6"}
+
+
+def _markup(m: "re.Match") -> str:
+    name = m.group(2)
+    if name is None:                        # a comment or a processing instruction
+        return ""
+    low = name.lower()
+    # a real tag: a closing or self-closing tag, one with attributes or digits (<WH430>), or a known one.
+    # A plain word in angle brackets (<is>, <not>: words a translation adds) is text and stays.
+    if m.group(1) or m.group(3).strip() or any(c.isdigit() for c in name) or low in _TAG_NAMES:
+        return " " if low in _SEPARATING else ""
+    return m.group(0)
+
+
 def clean_text(text: str) -> str:
     """Removes leftover markup and tidies spaces in one verse."""
     t = xml_safe(text or "")
     if "<" in t:
-        t = re.sub(r"<[^>]+>", "", t)
+        t = _MARKUP.sub(_markup, t)
     t = t.replace("¶", "")
     t = re.sub(r"\s+", " ", t)
     return t.strip()

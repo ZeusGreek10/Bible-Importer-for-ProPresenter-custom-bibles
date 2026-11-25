@@ -38,11 +38,15 @@ def build_usx(chapters: dict) -> dict:
         SubElement(usx, 'book', code=book_code).text = book_code
 
         for number in sorted(pages):
-            tree = lxml.html.fromstring(pages[number])
-            found = tree.xpath("//*[contains(@class, 'chapter')]")
-            if not found:       # (the original stops with an error here; a page without a chapter is skipped)
-                continue
-            parse_chapter(usx, found[0])
+            before = len(usx)
+            try:
+                tree = lxml.html.fromstring(pages[number])
+                found = tree.xpath("//*[contains(@class, 'chapter')]")
+                if not found:       # (the original stops with an error here; a page without a chapter is skipped)
+                    continue
+                parse_chapter(usx, found[0])
+            except Exception:       # (the original stops here too; one odd page must not lose the whole download)
+                del usx[before:]
 
         out[book_code] = (toxml(usx), usx)
     return out

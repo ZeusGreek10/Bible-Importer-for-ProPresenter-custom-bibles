@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Optional
 from uuid import uuid4
 
-from .model import WINDOWS_RESERVED, BibleError, ParsedBible, from_dense
+from .model import WINDOWS_RESERVED, BibleError, ParsedBible, from_dense, xml_safe
 
 FORMAT = "bible-importer-1"
 NUMBERINGS = {"kjv": "KJV (English)", "synodal": "Synodal (Russian)"}
@@ -46,7 +46,7 @@ def default_numbering(language: str, lang_code: str, name: str) -> str:
 
 def make_code(short: str, name: str) -> str:
     code = re.sub(r"[^a-z0-9]", "", (short or name).lower())[:12]
-    if code.upper() in WINDOWS_RESERVED:        # "con", "nul"… cannot be file names on Windows
+    if code.upper() in WINDOWS_RESERVED or code == "index":      # "con", "nul"… cannot be file names on Windows; "index" is ours
         code += "-bible"
     return code or "bible"
 
@@ -171,6 +171,8 @@ class Library:
     def save(self, pb: ParsedBible, source: str, source_key: str = "") -> Installed:
         """Checks and saves a Bible. Replaces the one with the same source_key (a second download)."""
         pb.validate()
+        for attr in ("name", "short", "language", "lang_code", "copyright"):
+            setattr(pb, attr, xml_safe(getattr(pb, attr)))          # a lone surrogate cannot be written to a file
         existing = next((i for i in self.items if source_key and i.source_key == source_key), None)
         if existing:
             code = existing.code

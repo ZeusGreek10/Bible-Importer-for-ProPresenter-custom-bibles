@@ -64,6 +64,8 @@ def _cached(path: Path, fetch: Callable[[], list[Entry]], now: float) -> tuple[l
         return saved, False, False
     try:
         fresh = fetch()
+        if not fresh:
+            raise ValueError("empty list")      # a maintenance page: never replace a good list with nothing
     except netutil.Cancelled:
         raise
     except Exception:
