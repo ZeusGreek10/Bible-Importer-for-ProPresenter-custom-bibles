@@ -29,7 +29,9 @@ Existing files are never overwritten: a second export of the same Bible gets "(2
 pip install -r requirements-gui.txt
 python bible_gui.py
 ```
-Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow. It runs the tests, builds Windows and Mac apps and keeps them as downloads on the run page. (The Mac app is not signed: right-click › Open the first time.)
+Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow, then choose **mac** (a `.dmg` disk image), **windows** (a zip) or **all**. It runs the tests first, then builds the app and keeps the result as a download on the run page. It only runs when you press the button (the old build of the command-line tool on every push is gone; it is in the git history).
+
+The Mac app is not signed or notarized by Apple. First launch: open the `.dmg`, drag **Bible Importer** to **Applications**, open it once, then on macOS 15 and later go to System Settings › Privacy & Security › **Open Anyway**; on macOS 13–14 right-click the app › Open.
 
 ### Tests and design
 ```
