@@ -847,7 +847,7 @@ class MainWindow(QMainWindow):
 
     def _write_one(self, pb: ParsedBible, job: dict, mode: str, dest: Path, fmt: str) -> str:
         base = safe_name(pb.short or pb.name)
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
             if fmt == "lp":
                 made = export_lp.write(pb, Path(tmp) / f"{base}.json", job["numbering"])
             else:

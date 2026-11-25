@@ -88,7 +88,7 @@ def write_rvbible(pb: ParsedBible, path: Path) -> Path:
     """Makes a .rvbible file (a zip of the three parts, made as the original tool made it).
     The file appears only when it is complete."""
     path = Path(path)
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         folder = Path(tmp) / "bible"
         write_files(pb, folder)
         part = shutil.make_archive(str(Path(tmp) / "archive"), "zip", str(folder))
@@ -155,7 +155,7 @@ def copy_without_overwriting(src: Path, folder: Path) -> Path:
     finally:
         try:
             part.unlink()
-        except FileNotFoundError:
+        except OSError:                      # gone already, or held for a moment by a virus scanner: the copy is done
             pass
 
 
@@ -179,29 +179,70 @@ def windows_bible_folder(programdata: Optional[str] = None) -> Path:
     return Path(pd) / "RenewedVision" / "ProPresenter" / "Bibles"
 
 
-def install_windows_sideload(rvbible: Path, bibles_folder: Optional[Path] = None) -> Path:
-    folder = (bibles_folder or windows_bible_folder()) / "sideload"
-    return copy_without_overwriting(rvbible, folder)
+LIST_KEY = "InstalledBiblesNew="
 
 
-_INSTALLED = re.compile(r"InstalledBiblesNew=(?P<array>\[[^\]]*?]);?")
+def parse_installed(text: str) -> tuple[int, int, list[tuple[str, str]], str]:
+    """Finds ProPresenter's Bible list in the text of BibleData.proPref.
+
+    Returns (start, end, items, separator): where the [...] is in the text, each entry as (the text exactly as it is
+    written, its value), and what is written between entries (",", or ", "). Reads strings the way JSON does, so a
+    "]" or a quote inside a Bible's name is no problem. Raises BibleError when the list is not in this form."""
+    bad = BibleError("ProPresenter's Bible list is not in the form this program knows, so it was left alone.")
+    i = text.find(LIST_KEY)
+    if i < 0:
+        raise bad
+    k = i + len(LIST_KEY)
+    while k < len(text) and text[k].isspace():
+        k += 1
+    if k >= len(text) or text[k] != "[":
+        raise bad
+    open_at = k
+    k += 1
+    dec = json.JSONDecoder()
+    items: list[tuple[str, str]] = []
+    gaps: list[str] = []
+    n = len(text)
+    while True:
+        while k < n and text[k].isspace():
+            k += 1
+        if k >= n:
+            raise bad
+        if text[k] == "]":
+            return open_at, k + 1, items, (gaps[0] if gaps else ",")
+        if text[k] != '"':
+            raise bad
+        try:
+            value, e = dec.raw_decode(text, k)
+        except ValueError:
+            raise bad
+        items.append((text[k:e], value))
+        k = e
+        g = k
+        while k < n and text[k].isspace():
+            k += 1
+        if k < n and text[k] == ",":
+            k += 1
+            while k < n and text[k].isspace():
+                k += 1
+            gaps.append(text[g:k])
+            if k < n and text[k] == "]":
+                raise bad               # a comma before the end: not a list we understand
+
+
+def render_installed(literals: list[str], separator: str = ",") -> str:
+    return "[" + separator.join(literals) + "]"
 
 
 def _read_installed(pref: Path) -> list[str]:
     """The Bibles ProPresenter lists. If the file cannot be read, stop: writing it again would drop the others."""
     try:
         text = pref.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, ValueError):
         raise BibleError("ProPresenter's Bible list could not be read.")
     if not text.strip():
         return []
-    m = _INSTALLED.match(text)
-    try:
-        if not m:
-            raise ValueError
-        return json.loads(m.group("array"))
-    except ValueError:
-        raise BibleError("ProPresenter's Bible list is not in the form this program knows, so it was left alone.")
+    return [value for _lit, value in parse_installed(text)[2]]
 
 
 def windows_free_bibles(bibles_folder: Optional[Path] = None, available: Optional[Path] = None) -> list[dict]:
@@ -214,28 +255,6 @@ def windows_free_bibles(bibles_folder: Optional[Path] = None, available: Optiona
     source = available or Path(resource_path("available_bibles.json"))
     free = json.loads(Path(source).read_text(encoding="utf-8"))
     return [f for f in free if f["internalAbbreviation"] not in used]
-
-
-def install_windows_overwrite(pb: ParsedBible, choice: dict, bibles_folder: Optional[Path] = None) -> Path:
-    """Installs a Bible in the place of one of ProPresenter's free Bibles (the recommended way on Windows)."""
-    folder = bibles_folder or windows_bible_folder()
-    pref = folder / "BibleData.proPref"
-    if not pref.exists():
-        raise BibleError("ProPresenter's Bible list was not found. Open ProPresenter once, then try again.")
-    overwrite_abbr = choice["internalAbbreviation"]
-    folder_id = str(uuid4())
-    target = folder / folder_id
-    try:
-        write_files(pb, target, abbreviation=overwrite_abbr)
-        entries = _read_installed(pref)
-        entries.append("|".join([folder_id, overwrite_abbr, pb.name or pb.short, "1"]))
-        tmp = pref.with_name(pref.name + ".part")
-        tmp.write_text("InstalledBiblesNew=" + json.dumps(entries) + ";\n", encoding="utf-8")
-        os.replace(tmp, pref)
-    except Exception:
-        shutil.rmtree(target, ignore_errors=True)
-        raise
-    return target
 
 
 def is_windows() -> bool:

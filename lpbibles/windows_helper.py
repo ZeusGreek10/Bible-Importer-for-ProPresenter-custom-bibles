@@ -33,7 +33,6 @@ from .paths import resource_path
 
 PREF_NAME = "BibleData.proPref"
 LINES_FILE = "Lines for BibleData.proPref.txt"
-_ARRAY = re.compile(r"InstalledBiblesNew=(\[[^\]]*?\]);?")
 _ID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 
@@ -55,16 +54,18 @@ def find_bibles_folder(programdata: Optional[str] = None) -> Optional[Path]:
 
 
 def is_propresenter_running() -> bool:
-    """True when ProPresenter is open (Windows). Anywhere else: False."""
+    """True when ProPresenter is open (Windows). Anywhere else: False.
+
+    Looks for any program with "propresenter" in its name, so a different version name is still found. When Windows
+    cannot be asked, the answer is False: the confirmation box tells the person to close ProPresenter first."""
     if sys.platform != "win32":
         return False
     try:
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        out = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ProPresenter.exe", "/NH"], capture_output=True, text=True,
-                             timeout=15, creationflags=flags).stdout
-        return "propresenter.exe" in out.lower()
-    except (OSError, subprocess.SubprocessError):
-        return False        # cannot tell: the person is asked to close it anyway
+        out = subprocess.run(["tasklist", "/NH", "/FO", "CSV"], capture_output=True, timeout=15, creationflags=flags).stdout
+        return b"propresenter" in out.lower()
+    except Exception:                       # no tasklist, blocked, timed out…: cannot tell
+        return False
 
 
 def free_bibles(bibles_folder: Optional[Path]) -> list[dict]:
@@ -79,28 +80,20 @@ def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _array_of(text: str) -> tuple[re.Match, list[str]]:
-    m = _ARRAY.search(text)
-    if not m:
-        raise BibleError("ProPresenter's Bible list is not in the form this program knows, so it was left alone.")
-    try:
-        return m, json.loads(m.group(1))
-    except ValueError:
-        raise BibleError("ProPresenter's Bible list could not be read, so it was left alone.")
-
-
 def add_entries(text: str, entries: list[str]) -> str:
-    """The text of ProPresenter's list with entries added (everything else in the file stays as it is)."""
+    """The text of ProPresenter's list with entries added. Only the end of the list changes: every other entry and
+    the rest of the file stay exactly as they were."""
     if not text.strip():
-        return "InstalledBiblesNew=" + json.dumps(entries) + ";\n"
-    m, existing = _array_of(text)
-    return text[:m.start(1)] + json.dumps(existing + entries) + text[m.end(1):]
+        return export_pp.LIST_KEY + json.dumps(entries) + ";\n"
+    start, end, items, sep = export_pp.parse_installed(text)
+    literals = [lit for lit, _v in items] + [json.dumps(e) for e in entries]
+    return text[:start] + export_pp.render_installed(literals, sep) + text[end:]
 
 
 def remove_entries(text: str, ids: set[str]) -> str:
-    m, existing = _array_of(text)
-    kept = [e for e in existing if e.split("|", 1)[0] not in ids]
-    return text[:m.start(1)] + json.dumps(kept) + text[m.end(1):]
+    start, end, items, sep = export_pp.parse_installed(text)
+    kept = [lit for lit, v in items if v.split("|", 1)[0] not in ids]
+    return text[:start] + export_pp.render_installed(kept, sep) + text[end:]
 
 
 @dataclass
@@ -127,8 +120,11 @@ def prepare(bibles: list[ParsedBible], codes: list[str], ready_dir: Path, bibles
             raise BibleError("One of the free Bibles you picked is already installed in ProPresenter. Pick another one.")
     pref_text, pref_bytes = "", b""
     if bibles_folder is not None:
-        pref_bytes = (Path(bibles_folder) / PREF_NAME).read_bytes()
-        pref_text = pref_bytes.decode("utf-8")
+        try:
+            pref_bytes = (Path(bibles_folder) / PREF_NAME).read_bytes()
+            pref_text = pref_bytes.decode("utf-8")
+        except (OSError, ValueError):
+            raise BibleError("ProPresenter's Bible list could not be read, so nothing was made.")
         add_entries(pref_text, [])                  # refuse a list we cannot read before making anything
     ready_dir = Path(ready_dir)
     ready_dir.mkdir(parents=True, exist_ok=False)
@@ -138,17 +134,21 @@ def prepare(bibles: list[ParsedBible], codes: list[str], ready_dir: Path, bibles
         for pb, code in zip(bibles, codes):
             bible_id = str(uuid4())
             folder = ready_dir / bible_id
-            export_pp.write_files(pb, folder, abbreviation=code)
+            try:
+                export_pp.write_files(pb, folder, abbreviation=code)
+            except BibleError as e:
+                raise BibleError(f"{pb.name or pb.short}: {e}")
             name = clean_entry_name(pb.name or pb.short)
             p.folders.append(folder)
             p.entries.append("|".join([bible_id, code, name, "1"]))
             p.names.append(name)
         if bibles_folder is not None:
             p.new_pref = ready_dir / PREF_NAME
-            p.new_pref.write_text(add_entries(pref_text, p.entries), encoding="utf-8")
+            # written as bytes: the file keeps the line endings it had (text mode on Windows would change them)
+            p.new_pref.write_bytes(add_entries(pref_text, p.entries).encode("utf-8"))
         else:
             p.lines_file = ready_dir / LINES_FILE
-            p.lines_file.write_text(",\n".join(json.dumps(e) for e in p.entries) + "\n", encoding="utf-8")
+            p.lines_file.write_bytes((",\r\n".join(json.dumps(e) for e in p.entries) + "\r\n").encode("utf-8"))
     except Exception:
         shutil.rmtree(ready_dir, ignore_errors=True)
         raise
@@ -203,8 +203,11 @@ def install(p: Prepared, running: Callable[[], bool] = is_propresenter_running) 
         current = pref.read_bytes()
     except OSError as e:
         raise _plain(e)
+    except ValueError:
+        raise BibleError("ProPresenter's Bible list could not be read, so nothing was changed.")
     if _sha(current) != p.pref_hash:
-        raise BibleError("ProPresenter's list has changed since the files were made. Click Make them ready again.")
+        raise BibleError("ProPresenter's list has changed since the files were made. Close this window and click "
+                         "Get ready for ProPresenter again.")
     targets = [folder / f.name for f in p.folders]
     if any(t.exists() for t in targets):
         raise BibleError("A folder with the same name is already in ProPresenter's Bibles folder.")
@@ -237,7 +240,7 @@ def install(p: Prepared, running: Callable[[], bool] = is_propresenter_running) 
         except OSError:
             pass
     return Installed(bibles_folder=folder, folders=copied, ids=[f.name for f in copied], backup=backup,
-                     pref_hash=_sha(pref.read_bytes()))
+                     pref_hash=_sha(p.new_pref.read_bytes()))
 
 
 def undo(done: Installed, running: Callable[[], bool] = is_propresenter_running) -> None:
@@ -246,13 +249,21 @@ def undo(done: Installed, running: Callable[[], bool] = is_propresenter_running)
         raise BibleError("ProPresenter is open. Close it first, then try again.")
     pref = done.bibles_folder / PREF_NAME
     try:
-        text = pref.read_text(encoding="utf-8")
+        text = pref.read_bytes().decode("utf-8")
         new = remove_entries(text, set(done.ids))
         tmp = pref.with_name(f".{PREF_NAME}.{uuid4().hex[:8]}.part")
-        tmp.write_text(new, encoding="utf-8")
-        os.replace(tmp, pref)
+        try:
+            tmp.write_bytes(new.encode("utf-8"))
+            os.replace(tmp, pref)
+        finally:
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
         for f in done.folders:
             if _ID.fullmatch(f.name) and f.parent == done.bibles_folder:       # only a folder we made
                 shutil.rmtree(f, ignore_errors=True)
     except OSError as e:
         raise _plain(e)
+    except ValueError:
+        raise BibleError("ProPresenter's Bible list could not be read, so nothing was changed.")

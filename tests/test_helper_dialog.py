@@ -132,3 +132,25 @@ def test_main_window_buttons_open_the_helper(app, tmp_path, monkeypatch):
     w._open_helper()
     assert len(seen) == 1 and seen[0][0].short == "KJV"
     w.close()
+
+
+def test_the_window_opens_even_when_the_list_cannot_be_read(app, tmp_path):
+    folder = pp_folder(tmp_path)
+    (folder / "BibleData.proPref").write_text("not the file we know", encoding="utf-8")
+    d = make(tmp_path, folder)
+    assert "left alone" in d.findChild(type(d.body.itemAt(0).widget()), "helperstatus").text()
+    d.make_ready()
+    assert d.prepared.lines_file.exists() and d.auto_box is None
+    assert (folder / "BibleData.proPref").read_text(encoding="utf-8") == "not the file we know"
+
+
+def test_after_an_undo_there_is_no_dead_end(app, tmp_path, monkeypatch):
+    folder = pp_folder(tmp_path)
+    (folder / "BibleData.proPref").write_text(LIST.replace('"];', '","0aa4c0f1-2b7d-4c1a-8f3e-4d5b6c7e8f90|KJV|K|1"];'), encoding="utf-8")
+    d = make(tmp_path, folder)
+    d.make_ready()
+    answer(monkeypatch, "Do it")
+    d.do_it()
+    answer(monkeypatch, "Undo")
+    d.undo_it()
+    assert not d.auto_btn.isEnabled() and "again" in d.auto_msg.text() and d.steps_host.isHidden()

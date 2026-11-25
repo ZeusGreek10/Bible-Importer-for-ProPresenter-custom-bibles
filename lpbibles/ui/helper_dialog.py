@@ -52,7 +52,14 @@ class HelperDialog(QDialog):
         self.running = running
         self.prepared: Optional[wh.Prepared] = None
         self.installed: Optional[wh.Installed] = None
-        self.free = wh.free_bibles(self.bibles_folder)
+        self.problem = ""
+        try:
+            self.free = wh.free_bibles(self.bibles_folder)
+        except (BibleError, OSError, ValueError) as e:
+            # ProPresenter is here but its list cannot be read: do not touch it, make the lines to add by hand instead
+            self.problem = str(e) if isinstance(e, BibleError) else "ProPresenter's Bible list could not be read."
+            self.bibles_folder = None
+            self.free = wh.free_bibles(None)
         self.combos: list[QComboBox] = []
 
         v = QVBoxLayout(self)
@@ -140,7 +147,10 @@ class HelperDialog(QDialog):
         self.foot.addWidget(right)
 
     def _status_line(self) -> QLabel:
-        if self.bibles_folder is not None:
+        if self.problem:
+            lab = _label(f'<span style="color:{theme.WARN};font-weight:600">● {html.escape(self.problem)} Nothing in ProPresenter will be '
+                         f'changed: the app makes the lines to add by hand instead.</span>', rich=True)
+        elif self.bibles_folder is not None:
             lab = _label(f'<span style="color:{theme.GREEN}">●</span> <span style="color:{theme.GREEN};font-weight:600">'
                          f'ProPresenter found on this PC:</span> {_code(str(self.bibles_folder))}', rich=True)
         else:
@@ -298,7 +308,7 @@ class HelperDialog(QDialog):
             sl.addWidget(self._numbered(4, f"<b style='color:#fff'>Open ProPresenter.</b> {names} {'is' if n == 1 else 'are'} in the Bible list."))
             sl.addWidget(_label(f"<b style='color:{theme.TEXT2}'>To undo:</b> delete the added folder{'s' if n != 1 else ''} and rename "
                                 f"{_code('BibleData.proPref.old')} back to {_code('BibleData.proPref')}. Do these steps now: if you add a Bible in "
-                                "ProPresenter first, this list is out of date (click Make them ready again).", "hint", rich=True))
+                                "ProPresenter first, this list is out of date (close this window and click Get ready for ProPresenter again).", "hint", rich=True))
         else:
             sl.addWidget(self._numbered(1, f"On the PC with ProPresenter: <b style='color:#fff'>close ProPresenter</b>, then open {_code(PP_PATH)}."))
             sl.addWidget(self._numbered(2, f"<b style='color:#fff'>Drag the {n} Bible folder{'s' if n != 1 else ''}</b> from the ready folder into it."))
@@ -359,7 +369,7 @@ class HelperDialog(QDialog):
 
     def _confirm_install(self) -> bool:
         box = QMessageBox(QMessageBox.Question, "Put the Bibles in ProPresenter?",
-                          "Bible Importer will now:\n\n"
+                          "Close ProPresenter first. Then Bible Importer will:\n\n"
                           "• check that ProPresenter is closed\n"
                           "• keep your old list as BibleData.proPref.old\n"
                           "• copy the Bible folders into ProPresenter's Bibles folder\n"
@@ -440,7 +450,11 @@ class HelperDialog(QDialog):
             return
         self.installed = None
         self.done_box.hide()
-        self.steps_host.show()
+        # the list was changed again by the undo: to put the Bibles back, start again from the main window
+        # (the steps by hand would use a list that is out of date, so they stay hidden)
         if self.auto_box:
             self.auto_box.show()
-            self._say(self.auto_msg, "Undone: the Bibles were taken out of ProPresenter.")
+            self.auto_btn.setEnabled(False)
+            self._say(self.auto_msg, "Undone: the Bibles were taken out of ProPresenter. To put them back, close this window "
+                                     "and click Get ready for ProPresenter again.")
+            self.auto_msg.setStyleSheet(f"color: {theme.TEXT2};")

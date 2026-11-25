@@ -172,23 +172,13 @@ def test_install_windows(tmp_path):
         {"internalAbbreviation": "RVA", "displayAbbreviation": "RVES", "name": "Reina-Valera Antigua", "language": "Spanish"}]))
     choices = export_pp.windows_free_bibles(bibles, free)
     assert [c["internalAbbreviation"] for c in choices] == ["RVA"]       # BB is already in use
-    folder = export_pp.install_windows_overwrite(big_bible(), choices[0], bibles)
-    text = pref.read_text(encoding="utf-8")
-    assert text.startswith("InstalledBiblesNew=[") and f"{folder.name}|RVA|Test Bible|1" in text and "BasisBijbel" in text
-    rv = etree.parse(str(folder / "rvmetadata.xml")).getroot()
-    assert rv.find("abbreviation").text == "RVA" and rv.find("displayAbbreviation").text == "TB"
-    assert len(list((folder / "USX_1").glob("*.usx"))) == 66
-    # sideload
-    rvfile = export_pp.write_rvbible(big_bible(), tmp_path / "TB.rvbible")
-    assert export_pp.install_windows_sideload(rvfile, bibles).parent.name == "sideload"
-    # a failed install leaves nothing behind
-    pref.unlink()
+    pref.unlink()                                 # no list: a plain message, not a crash
     with pytest.raises(BibleError):
-        export_pp.install_windows_overwrite(big_bible(), choices[0], bibles)
+        export_pp.windows_free_bibles(bibles, free)
 
 
 def test_existing_files_are_never_overwritten(tmp_path):
-    """Add to ProPresenter (Mac) and the Windows sideload copy keep a file that is already there."""
+    """Add to ProPresenter (Mac) keeps a file that is already there."""
     a = export_pp.write_rvbible(big_bible(name="First Bible", short="TB"), tmp_path / "TB.rvbible")
     (tmp_path / "other").mkdir()
     other = export_pp.write_rvbible(big_bible(name="Another Bible", short="TB"), tmp_path / "other" / "TB.rvbible")
@@ -201,11 +191,6 @@ def test_existing_files_are_never_overwritten(tmp_path):
     assert first.read_bytes() == original_bytes             # the first file is untouched
     assert second.read_bytes() == other.read_bytes() and second.read_bytes() != original_bytes
     assert sorted(p.name for p in folder.iterdir()) == ["TB (2).rvbible", "TB (3).rvbible", "TB.rvbible"]
-    # the same for the Windows sideload folder
-    bibles = tmp_path / "Bibles"
-    s1 = export_pp.install_windows_sideload(a, bibles)
-    s2 = export_pp.install_windows_sideload(a, bibles)
-    assert (s1.name, s2.name) == ("TB.rvbible", "TB (2).rvbible") and s1.parent.name == "sideload"
 
 
 def test_copy_never_replaces_even_when_the_name_appears_late(tmp_path, monkeypatch):

@@ -174,3 +174,75 @@ def test_permission_problem_is_explained_plainly(tmp_path, monkeypatch):
 
 def test_the_check_for_a_running_propresenter_is_safe_off_windows():
     assert wh.is_propresenter_running() is False
+
+
+# ---- found in the review of the Windows code ----------------------------------------------------------
+
+def test_list_with_a_bracket_in_a_name_or_a_bom_or_a_leading_line_is_read(tmp_path):
+    for text in ('InstalledBiblesNew=["6fb4fb55-78a4-43bc-ac6a-076818c7abfc|BB|Bible [NT] \\"x\\"|1"];\n',
+                 "﻿" + LIST, "// settings\n" + LIST):
+        folder = tmp_path / str(abs(hash(text)))
+        folder.mkdir()
+        (folder / "BibleData.proPref").write_bytes(text.encode("utf-8"))
+        assert "RVA" in codes_free(folder)
+        p = wh.prepare([bible()], ["RVA"], folder / "Ready", folder)
+        new = p.new_pref.read_bytes().decode("utf-8")
+        assert new.startswith(text.split("InstalledBiblesNew=")[0]) and new.count("|RVA|") == 1
+        assert text.split("];")[0].split("InstalledBiblesNew=[")[1] in new      # the old entry is written as it was
+
+
+def test_the_list_keeps_its_spacing_and_line_endings(tmp_path):
+    for sep in (",", ", "):
+        text = f'InstalledBiblesNew=["6fb4fb55-78a4-43bc-ac6a-076818c7abfc|BB|A|1"{sep}"0aa4c0f1-2b7d-4c1a-8f3e-4d5b6c7e8f90|KJV|B|1"];\r\nOther=1;\r\n'
+        folder = propresenter(tmp_path / ("s" + str(len(sep))), text)
+        p = wh.prepare([bible()], ["RVA"], tmp_path / ("R" + str(len(sep))), folder)
+        new = p.new_pref.read_bytes()
+        assert b"\r\r" not in new and new.endswith(b"Other=1;\r\n") and new.count(b"\r\n") == 2
+        assert f'|1"{sep}"'.encode() in new
+        done = wh.install(p, running=lambda: False)
+        wh.undo(done, running=lambda: False)
+        assert (folder / "BibleData.proPref").read_bytes() == text.encode()           # exactly as it was
+
+
+def test_a_list_that_is_not_text_is_a_plain_message(tmp_path):
+    folder = propresenter(tmp_path)
+    (folder / "BibleData.proPref").write_bytes(b"\xff\xfe\x00bad")
+    with pytest.raises(BibleError):
+        wh.prepare([bible()], ["RVA"], tmp_path / "R", folder)
+    assert not (tmp_path / "R").exists()
+
+
+def test_a_bible_that_cannot_be_made_is_named(tmp_path):
+    bad = ParsedBible(name="Short Bible", short="SB")
+    bad.add(1, 1, 1, "x")
+    with pytest.raises(BibleError) as e:
+        wh.prepare([bad], ["RVA"], tmp_path / "R", None)
+    assert "Short Bible" in str(e.value) and not (tmp_path / "R").exists()
+
+
+def test_asking_windows_if_propresenter_is_open_never_crashes(monkeypatch):
+    import subprocess
+    monkeypatch.setattr(wh.sys, "platform", "win32")
+    def boom(*a, **k):
+        raise UnicodeDecodeError("cp1252", b"\x81", 0, 1, "x")
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert wh.is_propresenter_running() is False
+    class R:
+        stdout = b'"Idle","0"\r\n"ProPresenter.exe","123"\r\n'
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: R())
+    assert wh.is_propresenter_running() is True
+    R.stdout = b'"BibleImporter.exe","9"\r\n'
+    assert wh.is_propresenter_running() is False
+
+
+def test_a_locked_temp_file_does_not_fail_a_good_copy(tmp_path, monkeypatch):
+    from lpbibles import export_pp
+    src = tmp_path / "a.rvbible"
+    src.write_bytes(b"x")
+    real = Path.unlink
+    def locked(self, *a, **k):
+        if self.name.endswith(".part"):
+            raise PermissionError("held by a virus scanner")
+        return real(self, *a, **k)
+    monkeypatch.setattr(Path, "unlink", locked)
+    assert export_pp.copy_without_overwriting(src, tmp_path / "out").read_bytes() == b"x"

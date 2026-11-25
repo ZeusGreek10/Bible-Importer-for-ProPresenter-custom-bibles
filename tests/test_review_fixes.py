@@ -187,8 +187,6 @@ def test_unreadable_propresenter_list_is_left_alone(tmp_path):
     pref.write_text("this is not the file we know", encoding="utf-8")
     with pytest.raises(BibleError):
         export_pp.windows_free_bibles(bibles)
-    with pytest.raises(BibleError):
-        export_pp.install_windows_overwrite(bible(), {"internalAbbreviation": "RVA"}, bibles)
     assert pref.read_text(encoding="utf-8") == "this is not the file we know"
     assert [p.name for p in bibles.iterdir()] == ["BibleData.proPref"]      # no half-made Bible folder either
 
