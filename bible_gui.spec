@@ -1,7 +1,11 @@
 # -*- mode: python ; coding: utf-8 -*-
 # Builds the Bible Importer app:  pyinstaller bible_gui.spec
 #   Windows: dist/BibleImporter/BibleImporter.exe   Mac: dist/Bible Importer.app
+import os
 import sys
+
+# Mac: one app for Intel and Apple chips (universal2). BI_ARCH=native builds for this computer's chip only.
+MAC_ARCH = None if os.environ.get('BI_ARCH') == 'native' else 'universal2'
 
 a = Analysis(
     ['bible_gui.py'],
@@ -30,7 +34,7 @@ exe = EXE(
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
-    target_arch='universal2' if sys.platform == 'darwin' else None,
+    target_arch=MAC_ARCH if sys.platform == 'darwin' else None,
     codesign_identity=None,
     entitlements_file=None,
 )
