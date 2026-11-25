@@ -1,0 +1,68 @@
+name: Build the Bible Importer app
+
+# Runs only when you press "Run workflow" (Actions tab). It runs the tests on Linux, then builds the
+# app for Windows and Mac and keeps the result as a download on the run page.
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - name: System libraries for Qt
+        run: sudo apt-get update && sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3
+      - run: pip install -r requirements-gui.txt pytest
+      - name: Tests
+        run: python -m pytest -q tests
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  build:
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ['windows-latest', 'macos-latest']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install -r requirements-gui.txt
+      - run: pyinstaller bible_gui.spec
+
+      - name: Check the built app starts (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\BibleImporter\BibleImporter.exe -ArgumentList '--self-test' -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "The built app did not start (exit code $($p.ExitCode))" }
+        env:
+          QT_QPA_PLATFORM: offscreen
+          BIBLE_IMPORTER_DATA: ${{ runner.temp }}\bible-importer-check
+
+      - name: Check the built app starts (Mac)
+        if: runner.os == 'macOS'
+        run: "dist/Bible\\ Importer.app/Contents/MacOS/BibleImporter --self-test"
+        env:
+          QT_QPA_PLATFORM: offscreen
+          BIBLE_IMPORTER_DATA: ${{ runner.temp }}/bible-importer-check
+
+      - name: Zip (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path dist\BibleImporter -DestinationPath BibleImporter-Windows.zip
+      - name: Zip (Mac)
+        if: runner.os == 'macOS'
+        run: ditto -c -k --sequesterRsrc --keepParent "dist/Bible Importer.app" BibleImporter-Mac.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BibleImporter-${{ runner.os }}
+          path: BibleImporter-*.zip
+          compression-level: 0

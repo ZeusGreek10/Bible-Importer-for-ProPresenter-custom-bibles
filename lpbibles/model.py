@@ -1,0 +1,113 @@
+"""What every source produces before it is saved: one Bible as book > chapter > verse > text."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+
+from .books import BOOKS
+
+MAX_CHAPTER = 200
+MAX_VERSE = 200
+MIN_BOOKS = 20  # a Bible with fewer books is refused (at least the New Testament or 20 books)
+
+
+class BibleError(Exception):
+    """A problem a volunteer can read (the message is shown as it is)."""
+
+
+@dataclass
+class Entry:
+    """One Bible in a catalog (not downloaded yet)."""
+    key: str                 # "getbible:kjv", "ebible:engwebp", "biblecom:1"
+    source: str              # "getbible", "ebible" or "biblecom"
+    name: str
+    short: str
+    language: str            # English name of the language ("Dutch")
+    lang_code: str = ""
+    licensed: bool = False
+    size_mb: float | None = None
+    note: str = ""           # "NT only"
+    ref: dict = field(default_factory=dict)  # what the source needs to download it
+    language_native: str = ""  # "Nederlands" when the catalog knows it
+
+
+def clean_text(text: str) -> str:
+    """Removes leftover markup and tidies spaces in one verse."""
+    t = text or ""
+    if "<" in t:
+        t = re.sub(r"<[^>]+>", "", t)
+    t = t.replace("¶", "")
+    t = re.sub(r"\s+", " ", t)
+    return t.strip()
+
+
+@dataclass
+class ParsedBible:
+    name: str = ""
+    short: str = ""          # "KJV"
+    language: str = ""       # English name of the language, "Dutch"
+    lang_code: str = ""      # "en", "eng", "nld"
+    direction: str = "ltr"
+    copyright: str = ""
+    # book number (1..66) > chapter > verse > text
+    verses: dict[int, dict[int, dict[int, str]]] = field(default_factory=dict)
+    # book number > (long name, short name, abbreviation) in the Bible's own language
+    book_names: dict[int, tuple[str, str, str]] = field(default_factory=dict)
+
+    def add(self, book: int, chapter: int, verse: int, text: str) -> None:
+        t = clean_text(text)
+        if not (1 <= book <= 66 and 1 <= chapter < MAX_CHAPTER and 1 <= verse < MAX_VERSE) or not t:
+            return
+        chapters = self.verses.setdefault(book, {})
+        vs = chapters.setdefault(chapter, {})
+        old = vs.get(verse, "")
+        vs[verse] = f"{old} {t}" if old else t
+
+    @property
+    def verse_count(self) -> int:
+        return sum(len(vs) for ch in self.verses.values() for vs in ch.values())
+
+    @property
+    def book_count(self) -> int:
+        return len(self.verses)
+
+    def validate(self) -> None:
+        """Raises BibleError when this is not a usable Bible. Called before anything is saved."""
+        if self.verse_count == 0:
+            raise BibleError("No verses were found in this Bible.")
+        if self.book_count < MIN_BOOKS:
+            raise BibleError(f"This Bible has only {self.book_count} books, so it was not added.")
+
+    def dense(self) -> dict[str, list[list[str]]]:
+        """books["43"][2][15] is John 3:16 (1-based positions; a missing verse is "")."""
+        out: dict[str, list[list[str]]] = {}
+        for b, chapters in self.verses.items():
+            rows: list[list[str]] = []
+            for c in range(1, max(chapters) + 1):
+                vs = chapters.get(c, {})
+                top = max(vs) if vs else 0
+                rows.append([vs.get(v, "") for v in range(1, top + 1)])
+            out[str(b)] = rows
+        return out
+
+    def name_of(self, book: int, kind: int = 0) -> str:
+        """Book name in the Bible's own language when known, else English. kind: 0 long, 1 short, 2 abbr."""
+        names = self.book_names.get(book)
+        if names and names[kind]:
+            return names[kind]
+        return BOOKS[book - 1][1 if kind == 0 else 2]
+
+
+def from_dense(books: dict[str, list[list[str]]]) -> dict[int, dict[int, dict[int, str]]]:
+    out: dict[int, dict[int, dict[int, str]]] = {}
+    for key, chapters in books.items():
+        try:
+            b = int(key)
+        except ValueError:
+            continue
+        for ci, vs in enumerate(chapters):
+            for vi, t in enumerate(vs):
+                if t:
+                    out.setdefault(b, {}).setdefault(ci + 1, {})[vi + 1] = t
+    return out

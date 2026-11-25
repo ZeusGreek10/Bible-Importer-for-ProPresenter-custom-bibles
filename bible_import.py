@@ -25,6 +25,10 @@ from prompt_toolkit import prompt
 from prompt_toolkit.completion import Completer, Completion
 from prompt_toolkit.shortcuts import radiolist_dialog
 
+# The chapter-reading functions are shared with the Bible Importer app (lpbibles/biblecom_html.py).
+from lpbibles.biblecom_html import (decode_yves_bytes, parse_chapter, parse_verse_numbers, parse_paragraph,
+                                    parse_header, cleanup_verse_contents)
+
 headers = {
     "Referer": "https://bible.com/",
     "Origin": "https://bible.com",
@@ -56,23 +60,6 @@ def read_yves_file(file_name):
 	with open(file_name, 'rb') as handle:
 		arrayOfByte = handle.read()
 		return decode_yves_bytes(arrayOfByte)
-
-# adaptation of the app Java code youversion.bible.reader.api.impl.ChapterContentData.decode
-def decode_yves_bytes(input_bytes):
-    i2 = len(input_bytes)
-    bArr = bytearray(input_bytes)
-    for i3 in range(0, i2, 2):
-        i4 = i3 + 1
-        if i2 > i4:
-            temp_i4 = ((bArr[i3] & 255) >> 5) | ((bArr[i3] & 255) << 3)
-            bArr[i3] = ((bArr[i4] & 255) >> 5) | ((bArr[i4] & 255) << 3) & 0xFF
-            bArr[i4] = temp_i4 & 0xFF
-        else:
-            bArr[i3] = (((bArr[i3] & 255) >> 5) | ((bArr[i3] & 255) << 3)) & 0xFF
-
-    # Convert the modified bytearray back to bytes for decoding
-    str_output = bytes(bArr).decode("UTF-8", errors="ignore")
-    return str_output
 
 class PromptCompleter(Completer):
 
@@ -175,92 +162,6 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
                     time.sleep(5)
                 else:
                     raise
-
-def parse_chapter(parent, chapter):
-    chapter_num = chapter.attrib["data-usfm"].split(".")[-1]
-
-    try:
-        chapter_num = str(int(chapter_num))
-    except:
-        pass
-
-    if chapter_num.isnumeric():
-        SubElement(parent, 'chapter', number=chapter_num, style='c')
-
-        for el in chapter:
-            heading = el.xpath(".//*[contains(@class,'heading')]")
-            if len(heading) > 0:
-                parse_header(parent, heading)
-            else:
-                parse_paragraph(parent, el, "p")
-    else:
-        print(f"[SKIPPING CHAPTER] Bible chapter has invalid chapter number: {chapter_num}")
-
-def parse_verse_numbers(verse_label: str, verse):
-    verse_input = verse_label.strip()
-
-    def extract_verse_from_label(inp: str):
-        matches = re.match(r"(?P<verse_int>\d+)(?P<verse_alpha>[a-z])?", inp.strip())
-        return (int(matches["verse_int"]), matches["verse_alpha"]) if matches else None
-    
-    def extract_verse_from_span(span):
-        try:
-            # matches based on class names like 'v1 v2 v3' etc.
-            return [int(x[1:]) for x in span.classes if re.match(r"v\d+", x)] if span is not None and "verse" in span.classes else None
-        except:
-            return None
-
-    # in the exceptional translations where verses are returned in ranges
-    if "-" in verse_input:
-        range_numbers = verse_input.split("-", 1)
-
-        lower = extract_verse_from_label(range_numbers[0])
-        upper = extract_verse_from_label(range_numbers[-1])
-
-        # ensures that ranges require an upper and lower bound
-        if isinstance(lower, tuple) and isinstance(upper, tuple):
-            ranges = range(lower[0], upper[0])
-            return [range_numbers[0], *ranges[1:], range_numbers[-1]]
-    # single verse
-    elif extract_verse_from_label(verse_input):
-        return [verse_input]
-
-    # if label based matching fails, try it using the span classes
-    # fixes bug #15 - Related to the fact that UKR Bible 1755 in ECC5.19 the label is displayed as - (dash) https://www.bible.com/bible/1755/ECC.5
-    return extract_verse_from_span(verse)
-
-def parse_paragraph(parent, paragraph, style):
-    verses = paragraph.xpath(".//*[contains(@class,'verse')]")
-    for verse in verses:
-        verse_number_el = verse.xpath('.//span[@class="label"]')
-        if len(verse_number_el) == 0:
-            continue
-
-        verse_number_label = verse_number_el[0].text
-        verse_number_parent = verse_number_el[0].getparent()
-        verse_numbers = parse_verse_numbers(verse_number_label, verse_number_parent)
-
-        if not verse_numbers:
-            continue
-
-        paragraph_el = SubElement(parent, 'para', style=style)
-        verse_el = SubElement(paragraph_el, 'verse', number=verse_number_label, style='v')
-
-        # retrieve all verse text components - strip alphanumeric suffix
-        verse_number_classes = ' '. join(["v" + str(x).rstrip(string.ascii_lowercase) for x in verse_numbers])
-        verse_texts = verse.xpath('//*[@class="verse ' + verse_number_classes + '"]//span[@class="content"]')
-        # group by div-tag, these will be text blocks for a single line
-        groups = itertools.groupby(verse_texts, lambda x: next(an for an in x.iterancestors() if an.tag == 'div'))
-        # trim all texts and omit whitespace texts, then join them by a line separator
-        verse_text = '\n'.join([''.join([x.text_content() for x in group_values]).strip() for parent, group_values in groups])
-        # verse contents post-processing
-        verse_el.tail = cleanup_verse_contents(verse_text.strip())
-
-def parse_header(parent, headers):
-    header_el = SubElement(parent, 'para', style="s1")
-
-    verses = list(itertools.chain(*[header.xpath(".//text()") for header in headers]))
-    header_el.text = ''.join(verses).strip()
 
 def toxml(elem):
     """Return a XML string for the Element."""
@@ -381,19 +282,6 @@ def move_rvbible_propresenter_folder(rvbible_loc):
 
     new_file_loc = os.path.join(propresenter_bible_location, filename)
     shutil.copyfile(rvbible_loc, new_file_loc)
-
-def cleanup_verse_contents(text):
-    # Remove multiple whitespaces, don't consider new lines
-    a = re.sub(r"([^\S\n])+", r"\1", text)
-    # Remove spaces in between specific punctuation sequences
-    a = re.sub(r"([\"'“”‘’«»‹›„‚”’])[^\S\n]+([\"'“”‘’«»‹›„‚”’.,!:;])", r"\1\2", a)
-    a = re.sub(r"([.,!:;])[^\S\n]+([.,!:;])", r"\1\2", a)
-
-    # Fixes issue #4 - Bible.com mistakenly contains paragraph characters
-    # Specifically at this verse: https://www.bible.com/bible/2692/ISA.27.2.NASB2020
-    # consider deletion if source is updated
-    a = a.replace('¶', '')
-    return a
 
 def overwrite_free_bible(bible_folder):
     program_data = os.getenv('PROGRAMDATA')

@@ -4,6 +4,44 @@
 
 ProPresenter offers a list of bible translations to use during your services. In Dutch however quite a few translations are missing `NBV21` being one of them. After multiple requests to RenewedVision team to add it, they never did. After inspecting the code and file structure of how ProPresenter stores bibles on the disk I leveraged this to create new translations which can be opened an used.
 
+## Bible Importer app (Mac and Windows)
+
+A window for adding Bibles, built with Python and Qt (PySide6). Its layout follows the Add Bibles window designed for Live Presenter (`specs/add-bibles` in the Live Presenter repository).
+
+![Free Bibles](/Resources/gui-free.png)
+
+**Free Bibles tab.** Pick a language on the left, then **Download** a Bible on the right. The list comes from [getBible](https://getbible.net) and [eBible.org](https://ebible.org) (only Bibles that may be shared). The list is saved for a day, so the window still works without internet (it shows the saved list and says so).
+
+**Bible.com tab.** Licensed Bibles (NBV21, NASB…) from Bible.com, with a warning that your church must have the right to use them. These download chapter by chapter, with a progress bar and **Cancel**. Bible.com changes its pages without notice: if a download fails the window says so plainly and nothing already saved is touched.
+
+**Import a file…** or drop a file on the dashed box. Reads Zefania, OSIS, USX, USFM, USFX, ProPresenter `.rvbible` and JSON files (also a zip of them).
+
+**Installed.** Every downloaded Bible is kept in the app's own folder (Windows: `%APPDATA%\Bible Importer`, Mac: `~/Library/Application Support/Bible Importer`). For each one you can:
+- choose its verse numbering (KJV or Synodal), used by the Live Presenter file;
+- **Export ▾ › For Live Presenter (.json)…** a file you add in Live Presenter with *Import*;
+- **Export ▾ › For ProPresenter (.rvbible)…** a file for ProPresenter;
+- **Export ▾ › Install in ProPresenter…** which copies it where ProPresenter looks (on Windows you choose between taking the place of one of ProPresenter's free Bibles, as the command-line tool does, or sideloading);
+- **Remove** it.
+
+### Run it
+```
+pip install -r requirements-gui.txt
+python bible_gui.py
+```
+Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow. It runs the tests, builds Windows and Mac apps and keeps them as downloads on the run page. (The Mac app is not signed: right-click › Open the first time.)
+
+### Tests
+```
+pip install -r requirements-gui.txt pytest
+QT_QPA_PLATFORM=offscreen python -m pytest tests
+```
+`python tools/screenshots.py OUTPUT_FOLDER` saves screenshots with sample data (used to compare the window with the approved renderings).
+
+What the tests cover: the USFM / USX / USFX / OSIS / Zefania readers, the catalogs and their saved lists, the library, both exports (Live Presenter JSON and `.rvbible`, read back again), the ProPresenter install on Mac and Windows folders (with fake folders), the Bible.com reader (with sample pages and a fake server), and the window (download, failure and retry, cancel, import, remove, export, closing during a download).
+Not covered: the real Bible.com site (it was not reachable from the build server), and real ProPresenter installs.
+
+The original command-line tool (`bible_import.py`) still works; it now shares its chapter-reading code with the app (`lpbibles/biblecom_html.py`).
+
 ## How to automatically
 
 I created a script which automatically downloads a Bible translation from bible.com and converts it to a ProPresenter bible (RVBible format). You can run the script, which will guide you through the steps needed to download and install the bible for ProPresenter.

@@ -5,3 +5,6 @@ download
 output
 build
 dist
+
+.venv
+screenshots
