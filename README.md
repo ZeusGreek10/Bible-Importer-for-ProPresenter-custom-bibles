@@ -1,8 +1,10 @@
-# Custom Bible translations in ProPresenter 7
+# Bible Importer: custom Bible translations for ProPresenter 7
+
+**Bible Importer** is an app for Mac and Windows that gets Bibles (free ones, licensed ones from Bible.com, or from a file you already have) and builds the Bible files that ProPresenter can use. It is a window built around the original command-line tool by Martijn Lentink, which is still in this repository and described further down.
 
 ![Custom translation in ProPresenter](/Resources/example.png)
 
-ProPresenter offers a list of bible translations to use during your services. In Dutch however quite a few translations are missing `NBV21` being one of them. After multiple requests to RenewedVision team to add it, they never did. After inspecting the code and file structure of how ProPresenter stores bibles on the disk I leveraged this to create new translations which can be opened an used.
+*Why the original tool was made, in its author's words:* ProPresenter offers a list of bible translations to use during your services. In Dutch however quite a few translations are missing `NBV21` being one of them. After multiple requests to RenewedVision team to add it, they never did. After inspecting the code and file structure of how ProPresenter stores bibles on the disk I leveraged this to create new translations which can be opened an used.
 
 ## Please read first: copyright and your responsibility
 
@@ -31,37 +33,43 @@ A window for getting Bibles and turning them into files that ProPresenter or Liv
 - **Bible.com:** licensed Bibles (NBV21, NASB…), with a warning that your church must have the right to use them. These download chapter by chapter, with progress and Cancel. Bible.com changes its pages without notice: if it fails, the window says so plainly and nothing is damaged.
 - **From a file:** drop or choose a Bible you already have (Zefania, OSIS, USX, USFM, USFX, ProPresenter `.rvbible`, Live Presenter / getBible JSON, or a zip of them) to turn it into the other format.
 
-**2 · Your list.** The Bibles you added, each with its state (Waiting, Saved, Downloading, Exported, Failed). Bibles downloaded before are kept on this computer ("saved"), so exporting again is instant.
+**2 · Your list.** The Bibles you added, each with its state (Waiting, Saved, Downloading, Exported or Added, Failed). Bibles downloaded before are kept on this computer ("saved"), so exporting again is instant.
+- The **✕** takes a Bible out of the list.
+- The **trash can** (only on a Bible that has a saved copy) deletes the copy that Bible Importer keeps on this computer, after asking. Files you saved in a folder, and Bibles already added to ProPresenter, are not touched. A Bible that came from a file leaves the list, because it can only come back by choosing the file again.
 
 **3 · Export for** ProPresenter or Live Presenter, then one button:
 - **ProPresenter on Mac:** **Add to ProPresenter** puts the Bibles where ProPresenter looks for them. **Save files…** keeps `.rvbible` files in a folder instead.
 - **ProPresenter on Windows:** saves `.rvbible` files in a folder. A **?** explains how to add them to ProPresenter by hand, and the quirks of Windows (ProPresenter there only lists Bibles it already knows, so a new Bible has to take the place of one of its free Bibles).
 - **Live Presenter:** saves one `.json` file per Bible in a folder. In Live Presenter use *Import a file*. A small picker sets how the Psalms are numbered (KJV or Synodal).
 
-Existing files are never overwritten: a second export of the same Bible gets "(2)" in its name. Saved copies live in the app's own folder (Windows: `%APPDATA%\Bible Importer`, Mac: `~/Library/Application Support/Bible Importer`).
+Files saved in a folder are never overwritten: a second export of the same Bible gets "(2)" in its name. (**Add to ProPresenter** on Mac is different: it puts `<name>.rvbible` in ProPresenter's Bible folder and replaces a file with the same name there, so adding a Bible again updates it. The folder is `~/Library/Application Support/RenewedVision/RVBibles/v2`, or the older `/Library/Application Support/RenewedVision/RVBibles/v2` if that is the one that exists.) Saved copies live in the app's own folder (Windows: `%APPDATA%\Bible Importer`, Mac: `~/Library/Application Support/Bible Importer`).
 
 ### Run it
+Needs Python 3.10 or newer (the ready-made apps are built with 3.10).
 ```
 pip install -r requirements-gui.txt
 python bible_gui.py
 ```
-Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow, then choose **mac** (a `.dmg` disk image), **windows** (a zip) or **all**. It runs the tests first, then builds the app and keeps the result as a download on the run page. It only runs when you press the button (the old build of the command-line tool on every push is gone; it is in the git history).
+Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow, then choose **mac** (a `.dmg` disk image), **windows** (a zip) or **all**. It runs the tests first, then builds the app and keeps the result as a download on the run page. It only runs when you press the button (the old build of the command-line tool on every push is gone; it is in the git history). The Mac app runs on Intel and Apple-chip Macs; if that universal build ever fails, the workflow builds an Apple-chip-only app and says so in the run summary.
 
 The Mac app is not signed or notarized by Apple. First launch: open the `.dmg`, drag **Bible Importer** to **Applications**, open it once, then on macOS 15 and later go to System Settings › Privacy & Security › **Open Anyway**; on macOS 13–14 right-click the app › Open.
 
-### Tests and design
+### Tests, design and icon
 ```
 pip install -r requirements-gui.txt -r requirements.txt pytest
 QT_QPA_PLATFORM=offscreen python -m pytest tests
 ```
-The drawings the window was built from are in `design/` (PNG and HTML). `python tools/screenshots.py OUTPUT_FOLDER` saves screenshots of the window with sample data, to compare with them.
+The drawings the window was built from are in `design/` (PNG and HTML). `python tools/screenshots.py OUTPUT_FOLDER` saves screenshots of the window with sample data, to compare with them. The app icon (`Resources/icon/`: PNG, Mac `.icns`, Windows `.ico`) is drawn by `python tools/make_icon.py` (needs Pillow).
 
-What the tests cover: the file readers, the catalogs and their saved lists, the library, both exports (read back again), the ProPresenter install on Mac and Windows folders (fake folders), the Bible.com reader (sample pages and a fake server), and the window (adding to the list, exporting for both programs, failure and retry, cancel, import, closing during an export).
+What the tests cover: the file readers, the catalogs and their saved lists, the library, both exports (read back again), the ProPresenter install on Mac and Windows folders (fake folders), the Bible.com reader (sample pages and a fake server), and the window (adding to the list, exporting for both programs, failure and retry, cancel, import, deleting a saved copy, closing during an export).
 Not covered: the real Bible.com site (it was not reachable from the build server), and real ProPresenter / Live Presenter installs.
 
 **Bible.com Bibles are made exactly as the original tool made them.** The requests use the original's headers (they look like a web browser), and the ProPresenter file has the same USX (section headings, verse ranges like "3-4", and every book Bible.com lists, also those outside the usual 66) and the same `metadata.xml` and `rvmetadata.xml`. `tests/test_original_parity.py` runs the untouched original script (`tests/reference/bible_import_original.py`) and the app on the same chapter pages and checks that every file is identical. Bibles from the free sources and from files are written in the same form, from their verses (so they have no section headings). The Live Presenter `.json` has the 66 usual books, one text per verse.
 
 The original command-line tool (`bible_import.py`) still works; it shares its chapter-reading and file-writing code with the app (`lpbibles/biblecom_html.py`, `lpbibles/biblecom_pp.py`).
+
+> [!NOTE]
+> Everything from here on is the original author's notes about the command-line tool (`bible_import.py`) and about how ProPresenter stores Bibles. It still applies to that tool. To run it from the source: `pip install -r requirements.txt`, then `python bible_import.py`. This repository no longer builds its programs on every push; the download link below goes to the original project's releases.
 
 ## How to automatically
 
@@ -116,7 +124,7 @@ I created a script which automatically downloads a Bible translation from bible.
 
 ### Mac
 
-1. Observe that ProPresenter stores the Bibles on the location `/Library/Application Support/RenewedVision/RVBibles/v2/`, each bible will be stored in a ZIP file with extension `.rvbible`.
+1. Observe that ProPresenter stores the Bibles on the location `~/Library/Application Support/RenewedVision/RVBibles/v2/` (older installs: `/Library/Application Support/RenewedVision/RVBibles/v2/`; the tool checks both), each bible will be stored in a ZIP file with extension `.rvbible`.
 
 2. Run the Python script `retrieve_chapters_nbv21.py`.
 <br>This will retrieve NBV21 bible chapter by chapter from the website and stores it in JSON format.
@@ -144,7 +152,7 @@ ProPresenter enables you to install bibles through their in application store. T
 After downloading a bible it is stored on the users machine for easy lookup and (offline) use. Installed bibles on a machine are available for all users and is not bound to a single user profile.
 There is a slight difference in how these bibles are stored between Mac OSX systems and Windows.
 
-On Windows these are stored in a Bibles folder, with an index file `BibleData.proRef`. This file holds a list of pipe separated bible installations with UUIDs refering to folder names where the contents of the translations are stored.
+On Windows these are stored in a Bibles folder, with an index file `BibleData.proPref`. This file holds a list of pipe separated bible installations with UUIDs refering to folder names where the contents of the translations are stored.
 
 On Mac the contents of the bibles, which are the files in the UUID folders, are stored in a ZIP file with `.rvbible` as extension. For Mac there is no index file.
 
@@ -160,7 +168,7 @@ ProPresenter uses bibles stored in the [Unified Scripture XML](https://ubsicap.g
 - As `NBV21` bible is licenced, like most bibles, I am unable to give you its contents.
 
 ## Folder structure
-ProPresenter stores the Bibles on the Windows location `%programdata%\RenewedVision\ProPresenter\Bibles`, each bible will be stored in a separate folder with a UUID as name. On Mac OSX this is `/Library/Application Support/RenewedVision/RVBibles/v2/`, each bible will be stored in a ZIP file with extension `.rvbible`.
+ProPresenter stores the Bibles on the Windows location `%programdata%\RenewedVision\ProPresenter\Bibles`, each bible will be stored in a separate folder with a UUID as name. On Mac OSX this is `~/Library/Application Support/RenewedVision/RVBibles/v2/` (older installs: `/Library/Application Support/RenewedVision/RVBibles/v2/`), each bible will be stored in a ZIP file with extension `.rvbible`.
 
 ```
 │   BibleData.proPref
