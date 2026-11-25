@@ -46,6 +46,9 @@ A window for getting Bibles and turning them into files that ProPresenter or Liv
 
 **Nothing is ever overwritten.** If a file with the same name is already there, the new one gets "(2)" in its name, then "(3)" and so on. This is true for files saved in a folder and also for **Add to ProPresenter** on Mac, which puts `<name>.rvbible` in ProPresenter's Bible folder (`~/Library/Application Support/RenewedVision/RVBibles/v2`, or the older `/Library/Application Support/RenewedVision/RVBibles/v2` if that is the one that exists). So adding the same Bible twice leaves two files there, and ProPresenter may list both; the list in the app tells you the name it used ("added to ProPresenter as KJV (2).rvbible"). To get rid of one, delete it in ProPresenter or delete its file from that folder. Saved copies, and the list, live in the app's own folder (Windows: `%APPDATA%\Bible Importer`, Mac: `~/Library/Application Support/Bible Importer`).
 
+### License
+The code written for this app is under the **MIT license** (`LICENSE`). Martijn Lentink's original tool, and the parts of this app that are taken from it or follow it closely, are **not** covered by that license: his rights apply to them (the list is in `NOTICE`). `NOTICE` also lists the programs the app is built with (PySide6/Qt under the LGPL, lxml, requests and others), with their license texts in the `licenses/` folder. Both files are inside the ready-made apps too. This project contains no Bible text; see the copyright notice at the top of this page.
+
 ### Run it
 Needs Python 3.10 or newer (the ready-made apps are built with 3.10).
 ```

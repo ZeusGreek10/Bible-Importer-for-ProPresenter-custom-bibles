@@ -1,0 +1,70 @@
+Bible Importer: licenses and credits
+====================================
+
+Read this together with the "Please read first: copyright and your responsibility" section of the README.
+This project contains no Bible text. It only helps you build Bible files from text that you choose.
+
+
+1. What the MIT license (the file LICENSE) covers
+-------------------------------------------------
+The code and files written for the Bible Importer app:
+
+  bible_gui.py, bible_gui.spec
+  lpbibles/ui/                     (the window)
+  lpbibles/__init__.py, backend.py, books.py, catalog.py, ebible.py, export_lp.py, getbible.py, importers.py,
+  lpbibles/library.py, model.py, netutil.py, paths.py, usfm.py
+  tests/ (except tests/reference/), tools/, design/
+  Resources/ui/, Resources/icon/, Resources/gui-main.png
+  .github/workflows/main.yml, requirements-gui.txt, requirements-gui-app.txt
+
+
+2. What the MIT license does NOT cover: the original tool
+---------------------------------------------------------
+This repository is a fork of "propresenter-custom-bibles" by Martijn Lentink
+(https://github.com/martijnlentink/propresenter-custom-bibles). The copy this repository was forked from has
+no license file. The following belong to the original tool or follow it closely. They are NOT under the MIT
+license above; the rights of the original author apply to them, and they stay as they are until he states a
+license for them:
+
+  Original files, as they were:
+    bible_import.spec, pyinstallercmd, requirements.txt, "Adhoc scripts/",
+    Resources/metadata.xml, Resources/available_bibles.json, Resources/example.png,
+    tests/reference/bible_import_original.py (an untouched copy used to check the app),
+    and the README sections from "How to automatically" onwards.
+
+  Original code, changed or moved into the app:
+    bible_import.py (the command-line tool),
+    lpbibles/biblecom_html.py and lpbibles/biblecom_pp.py (functions taken from the original tool),
+    lpbibles/biblecom.py and lpbibles/export_pp.py (they follow the original tool's way of downloading from
+    Bible.com and of installing files for ProPresenter).
+
+Thank you, Martijn, for the original work and for finding out how ProPresenter stores its Bibles.
+
+
+3. Programs the app is built with (their licenses are in the folder "licenses")
+-------------------------------------------------------------------------------
+  PySide6 (Qt for Python) and Qt   LGPL-3.0 (also available under GPL-2.0 / GPL-3.0)
+                                    licenses/LGPL-3.0.txt, licenses/GPL-3.0.txt
+  lxml                              BSD-3-Clause      licenses/lxml-BSD-3-Clause.txt
+  requests                          Apache-2.0        licenses/requests-Apache-2.0.txt, requests-NOTICE.txt
+  urllib3                           MIT               licenses/urllib3-MIT.txt
+  charset-normalizer                MIT               licenses/charset-normalizer-MIT.txt
+  idna                              BSD-3-Clause      licenses/idna-BSD-3-Clause.txt
+  certifi                           MPL-2.0           licenses/certifi-MPL-2.0.txt
+  PyInstaller (packages the app)    GPL-2.0-or-later with an exception that allows the packaged program to have
+                                    its own license: licenses/PyInstaller-GPL-2.0-with-exception.txt
+  Python                            Python Software Foundation License (https://docs.python.org/3/license.html)
+
+About PySide6 and Qt (LGPL): in the ready-made apps these libraries are separate files inside the app folder
+(Windows: the BibleImporter folder; Mac: inside "Bible Importer.app"), so you can replace them with your own
+build of the same libraries. Their source code is available from https://code.qt.io/ and
+https://pypi.org/project/PySide6/ . Bible Importer does not change them.
+
+The app uses the Inter font only if it is installed on your computer; no font is included.
+
+
+4. Names
+--------
+ProPresenter is a product of RenewedVision. Bible.com and YouVersion, getBible, eBible.org and Live Presenter are
+named only to say where Bibles can come from or where the files can be used. This project is not affiliated with
+any of them. Product and service names belong to their owners.

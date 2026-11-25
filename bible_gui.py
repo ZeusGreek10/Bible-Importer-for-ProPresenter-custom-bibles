@@ -16,7 +16,8 @@ from lpbibles.library import Library
 from lpbibles.ui import theme
 from lpbibles.ui.main_window import MainWindow
 
-BUNDLED = ("metadata.xml", "available_bibles.json", os.path.join("ui", "chevron-down.svg"), os.path.join("icon", "icon.png"))
+BUNDLED = ("metadata.xml", "available_bibles.json", os.path.join("ui", "chevron-down.svg"), os.path.join("icon", "icon.png"),
+           "LICENSE", "NOTICE", os.path.join("licenses", "LGPL-3.0.txt"))
 
 
 def pipeline_check() -> None:

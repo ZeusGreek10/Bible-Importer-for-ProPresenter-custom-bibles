@@ -191,3 +191,24 @@ def test_unreadable_propresenter_list_is_left_alone(tmp_path):
         export_pp.install_windows_overwrite(bible(), {"internalAbbreviation": "RVA"}, bibles)
     assert pref.read_text(encoding="utf-8") == "this is not the file we know"
     assert [p.name for p in bibles.iterdir()] == ["BibleData.proPref"]      # no half-made Bible folder either
+
+
+# ---- license files -------------------------------------------------------------------------------------
+
+def test_license_files_are_there_and_shipped():
+    root = Path(__file__).resolve().parent.parent
+    mit = (root / "LICENSE").read_text(encoding="utf-8")
+    assert mit.startswith("MIT License") and 'THE SOFTWARE IS PROVIDED "AS IS"' in mit
+    notice = (root / "NOTICE").read_text(encoding="utf-8")
+    assert "Martijn Lentink" in notice and "NOT under the MIT" in notice and "LGPL" in notice
+    # every file the notice points to is in the licenses folder
+    import re
+    for name in re.findall(r"licenses/([A-Za-z0-9_.\-]+\.txt)", notice):
+        assert (root / "licenses" / name).exists(), name
+    assert "GNU LESSER GENERAL PUBLIC LICENSE" in (root / "licenses" / "LGPL-3.0.txt").read_text(encoding="utf-8")
+    spec = (root / "bible_gui.spec").read_text(encoding="utf-8")
+    assert "('LICENSE', '.')" in spec and "('NOTICE', '.')" in spec and "('licenses', 'licenses')" in spec
+    # the files the notice puts outside the MIT license really exist (the list stays true)
+    for f in ("bible_import.py", "lpbibles/biblecom_html.py", "lpbibles/biblecom_pp.py", "lpbibles/biblecom.py", "lpbibles/export_pp.py",
+              "tests/reference/bible_import_original.py", "Resources/metadata.xml", "Resources/available_bibles.json"):
+        assert (root / f).exists() and f.split("/")[-1] in notice, f

@@ -12,7 +12,7 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[('Resources/available_bibles.json', '.'), ('Resources/metadata.xml', '.'), ('Resources/ui', 'ui'),
-           ('Resources/icon', 'icon')],
+           ('Resources/icon', 'icon'), ('LICENSE', '.'), ('NOTICE', '.'), ('licenses', 'licenses')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
