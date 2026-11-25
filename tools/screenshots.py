@@ -22,6 +22,8 @@ from lpbibles.library import Library
 from lpbibles.model import Entry, ParsedBible
 from lpbibles.ui import theme
 from lpbibles.ui.dialogs import ExplainDialog
+from lpbibles.ui.helper_dialog import HelperDialog
+from lpbibles import windows_helper
 from lpbibles.ui.main_window import MainWindow
 
 ENGLISH = [("American Standard Version", "ASV", 3), ("Berean Standard Bible", "BSB", 4), ("Bible in Basic English", "BBE", 3),
@@ -124,6 +126,34 @@ def main(out: Path) -> None:
     d.show()
     pump(app, 0.3)
     d.grab().save(str(out / "06-Windows-explanation-dialog.png"))
+    d.close()
+
+    # 09 the Windows helper: choose / ready / done, with a fake ProPresenter folder
+    tmp = Path(tempfile.mkdtemp())
+    pp = tmp / "Bibles"
+    pp.mkdir()
+    (pp / "BibleData.proPref").write_text('InstalledBiblesNew=["6fb4fb55-78a4-43bc-ac6a-076818c7abfc|BB|BasisBijbel|1"];\n', encoding="utf-8")
+    bibles = [ParsedBible(name=n, short=s_) for n, s_ in (("King James Version", "KJV"), ("Darby Bible", "DARBY"))]
+    for pb in bibles:
+        for b in range(1, 67):
+            pb.add(b, 1, 1, "x")
+    d = HelperDialog(w, bibles, tmp / "Ready for ProPresenter", pp, running=lambda: False)
+    d.show()
+    pump(app, 0.3)
+    d.grab().save(str(out / "09-Helper-1-Choose.png"))
+    d.make_ready()
+    pump(app, 0.3)
+    d.grab().save(str(out / "10-Helper-2-Ready.png"))
+    d._confirm_install = lambda: True
+    d.do_it()
+    pump(app, 0.3)
+    d.grab().save(str(out / "11-Helper-3-Done.png"))
+    d.close()
+    d = HelperDialog(w, bibles, tmp / "Ready 2", None)
+    d.show()
+    d.make_ready()
+    pump(app, 0.3)
+    d.grab().save(str(out / "12-Helper-no-ProPresenter.png"))
     d.close()
 
     # 07 Windows, done

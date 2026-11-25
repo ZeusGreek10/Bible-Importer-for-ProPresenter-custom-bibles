@@ -23,6 +23,8 @@ from ..model import BibleError, Entry, ParsedBible
 from ..netutil import Cancelled, NetworkError
 from . import theme
 from .dialogs import ExplainDialog
+from .helper_dialog import HelperDialog
+from .. import windows_helper
 from .listfile import load_list, save_list
 from .widgets import (BibleRow, DropArea, LanguageList, ListItem, ListItemRow, Segmented, fmt_eta, plural,
                       step_header)
@@ -356,8 +358,13 @@ class MainWindow(QMainWindow):
         link.setObjectName("helplink")
         link.setCursor(Qt.PointingHandCursor)
         link.clicked.connect(self._explain)
+        self.helper_btn = QPushButton("Get ready for ProPresenter…")
+        self.helper_btn.setObjectName("btn")
+        self.helper_btn.setCursor(Qt.PointingHandCursor)
+        self.helper_btn.clicked.connect(self._open_helper)
         hr.addWidget(self.qmark)
         hr.addWidget(link, 1)
+        hr.addWidget(self.helper_btn)
         pv.addWidget(self.help_row)
         buttons = QHBoxLayout()
         buttons.setSpacing(8)
@@ -705,6 +712,22 @@ class MainWindow(QMainWindow):
     def _explain(self) -> None:
         ExplainDialog(self).exec()
 
+    def _open_helper(self) -> None:
+        """Windows: helps put the Bibles in the list into ProPresenter (see helper_dialog.py)."""
+        bibles: list[ParsedBible] = []
+        for it in self.items:
+            if not it.code:
+                continue
+            try:
+                bibles.append(self.library.load(it.code))
+            except BibleError:
+                pass
+        if not bibles:
+            self.set_message("Add the Bibles to the list and export them first: then they can be made ready.", "warn")
+            return
+        ready = export_pp.unique_path(self.folder, "Ready for ProPresenter", "")
+        HelperDialog(self, bibles, ready, windows_helper.find_bibles_folder()).exec()
+
     # ---- starting an export --------------------------------------------------------------------------
 
     def _go_clicked(self) -> None:
@@ -945,11 +968,11 @@ class MainWindow(QMainWindow):
             if d["fmt"] == "lp":
                 text += "In Live Presenter, use Import a file and pick them."
             elif self.platform != "mac":
-                text += "To use them in ProPresenter you still need to add them: see the ? below."
+                text += "To use them in ProPresenter you still need to add them: click Get ready for ProPresenter."
             if ok:
                 buttons.append(("Open the folder", lambda: self._open_folder(folder)))
             if d["fmt"] == "pp" and self.platform != "mac" and ok:
-                buttons.append(("How to add them to ProPresenter", self._explain))
+                buttons.append(("Get ready for ProPresenter…", self._open_helper))
         if failed:
             buttons.append((f"Retry the failed one" if failed == 1 else "Retry the failed ones", self._go_clicked))
         self.done_text.setText(text)

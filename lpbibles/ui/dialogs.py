@@ -24,6 +24,8 @@ BODY = f"""
 </style>
 <p>Bible Importer saves each Bible as a <code>.rvbible</code> file. ProPresenter for Windows cannot open that file by
 itself, so there are a few steps to do yourself. (On Mac the app can add the files for you.)</p>
+<p><b>An easier way:</b> click <b>Get ready for ProPresenter…</b> in the main window. It makes the folders and the list for you, and
+if you want, it can also put them in ProPresenter for you. The steps below are what it does, if you prefer to do them by hand.</p>
 <h3>GOOD TO KNOW FIRST</h3>
 <ul>
 <li>ProPresenter on Windows only lists Bibles whose <b>name code</b> it already knows. A new Bible has to take the

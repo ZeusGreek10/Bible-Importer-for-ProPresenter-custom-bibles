@@ -136,7 +136,7 @@ def test_export_files_for_propresenter(app, win, tmp_path):
     assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["KJV.rvbible", "WEB.rvbible"]
     assert [i.status for i in win.items] == ["done", "done"]
     assert win.done_box.isHidden() is False and "2 Bibles saved" in win.done_head.text()
-    assert "see the ? below" in win.done_text.text()
+    assert "Get ready for ProPresenter" in win.done_text.text()
     assert win.library.is_installed("getbible:kjv")
     # what was written is a real Bible
     from lpbibles import importers

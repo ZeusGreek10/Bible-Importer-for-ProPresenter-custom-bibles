@@ -155,6 +155,19 @@ QFrame#dlghead {{ background: {PANEL}; border-bottom: 1px solid {LINE2}; }}
 QFrame#dlgfoot {{ background: {PANEL}; border-top: 1px solid {LINE2}; }}
 QFrame#warnbox {{ background: {AMBER_BG}; border: 1px solid {AMBER_LINE}; border-radius: 10px; }}
 QFrame#warnbox QLabel {{ color: {AMBER_TEXT}; font-size: 11.5px; }}
+QFrame#stepbar {{ background: {BG}; border-bottom: 1px solid {LINE2}; }}
+QLabel#steppill {{ background: {PANEL2}; color: {DIM}; border-radius: 11px; padding: 3px 12px; font-size: 11px; font-weight: 700; }}
+QLabel#steppill[state="on"] {{ background: {ORANGE}; color: #111111; }}
+QLabel#steppill[state="ok"] {{ background: {DONE_BG}; color: {GREEN}; }}
+QLabel#hstepnum {{ background: {ORANGE}; color: #111111; border-radius: 11px; font-size: 11px; font-weight: 800; }}
+QLabel#todotext {{ color: {TEXT2}; font-size: 12px; }}
+QLabel#lab {{ color: {DIM}; font-size: 10px; font-weight: 800; letter-spacing: 1px; }}
+QLabel#helperstatus {{ color: {TEXT2}; font-size: 11.5px; }}
+QLabel#helpererror {{ color: {ERROR}; font-size: 11.5px; }}
+QPlainTextEdit#codebox {{ background: {FIELD}; border: 1px solid {LINE}; border-radius: 6px; padding: 4px 8px;
+    font-family: Consolas, Menlo, monospace; font-size: 11px; color: {LICENSED}; }}
+QFrame#autobox {{ background: {PANEL}; border: 1px solid {LINE}; border-radius: 10px; }}
+QFrame#autobox QLabel#autotitle {{ font-size: 12.5px; font-weight: 700; }}
 QTextBrowser {{ background: transparent; border: none; }}
 QMenu {{ background: {PANEL}; border: 1px solid {LINE}; padding: 4px; }}
 QMenu::item {{ padding: 6px 18px; border-radius: 5px; }}
