@@ -168,6 +168,11 @@ QPlainTextEdit#codebox {{ background: {FIELD}; border: 1px solid {LINE}; border-
     font-family: Consolas, Menlo, monospace; font-size: 11px; color: {LICENSED}; }}
 QFrame#autobox {{ background: {PANEL}; border: 1px solid {LINE}; border-radius: 10px; }}
 QFrame#autobox QLabel#autotitle {{ font-size: 12.5px; font-weight: 700; }}
+QMessageBox {{ background: {SHEET}; }}
+QMessageBox QLabel {{ color: {TEXT}; font-size: 12.5px; }}
+QMessageBox QPushButton {{ background: {PANEL2}; color: {TEXT}; border: none; border-radius: 8px; padding: 8px 16px; font-weight: 700; min-width: 80px; }}
+QMessageBox QPushButton:hover {{ background: {LINE}; }}
+QMessageBox QPushButton:default {{ background: {ORANGE}; color: #111111; }}
 QTextBrowser {{ background: transparent; border: none; }}
 QMenu {{ background: {PANEL}; border: 1px solid {LINE}; padding: 4px; }}
 QMenu::item {{ padding: 6px 18px; border-radius: 5px; }}

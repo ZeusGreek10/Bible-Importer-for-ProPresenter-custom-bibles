@@ -369,8 +369,16 @@ class HelperDialog(QDialog):
         yes = box.addButton("Do it", QMessageBox.AcceptRole)
         no = box.addButton("No, I will do it myself", QMessageBox.RejectRole)
         box.setDefaultButton(no)
+        self._widen(box)
         box.exec()
         return box.clickedButton() is yes
+
+    @staticmethod
+    def _widen(box: QMessageBox) -> None:
+        box.setMinimumWidth(560)
+        text = box.findChild(QLabel, "qt_msgbox_label")
+        if text is not None:
+            text.setMinimumWidth(400)
 
     def do_it(self) -> None:
         if self.prepared is None or self.prepared.new_pref is None:
@@ -418,6 +426,7 @@ class HelperDialog(QDialog):
         yes = box.addButton("Undo", QMessageBox.DestructiveRole)
         no = box.addButton("Keep them", QMessageBox.RejectRole)
         box.setDefaultButton(no)
+        self._widen(box)
         box.exec()
         return box.clickedButton() is yes
 
