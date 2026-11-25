@@ -4,6 +4,22 @@
 
 ProPresenter offers a list of bible translations to use during your services. In Dutch however quite a few translations are missing `NBV21` being one of them. After multiple requests to RenewedVision team to add it, they never did. After inspecting the code and file structure of how ProPresenter stores bibles on the disk I leveraged this to create new translations which can be opened an used.
 
+## Please read first: copyright and your responsibility
+
+> [!IMPORTANT]
+> **This is a tool for building Bible files for ProPresenter.** It does not contain, sell or hand out any Bible text. Every Bible it builds is made from text that *you* choose to download from a source, or that you supply yourself from your own files. (It can also save the same Bibles in a format for Live Presenter.)
+
+Many Bible translations are protected by copyright, and some of the places the app can download from have their own terms of use. Please only download, convert and use Bibles that you or your church have the right to use, for example public-domain translations, or translations covered by a licence you hold.
+
+By downloading, installing or using this app, you acknowledge and agree that:
+
+- **you alone are responsible** for making sure that your use of any Bible text, and of any website or service the app connects to, is permitted and follows the copyright laws, licences and terms of use that apply to you;
+- **neither the author of the original tool (Martijn Lentink), nor the author of this GUI app, nor anyone who contributed to either of them, can be held responsible or liable, in any case or in any capacity,** for improper use of copyrighted material by anyone who uses it.
+
+This project is independent. It is not affiliated with, endorsed by or sponsored by RenewedVision (ProPresenter), Bible.com / YouVersion, getBible, eBible.org, Live Presenter, or any Bible publisher or translation owner. Product and service names belong to their owners.
+
+Thank you for using it with care, and for respecting the work of the translators and publishers who make these Bibles possible.
+
 ## Bible Importer app (Mac and Windows)
 
 A window for getting Bibles and turning them into files that ProPresenter or Live Presenter can use. Built with Python and Qt (PySide6).
