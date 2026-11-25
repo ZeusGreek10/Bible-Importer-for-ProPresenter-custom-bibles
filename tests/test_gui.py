@@ -178,6 +178,7 @@ def test_format_choice_is_remembered(app, tmp_path):
 def test_mac_adds_to_propresenter(app, tmp_path, monkeypatch):
     w = make(app, tmp_path, platform="mac")
     target = tmp_path / "pp"
+    target.mkdir()                                   # ProPresenter's folder is there: no question is asked
     monkeypatch.setattr(export_pp, "mac_bible_folder", lambda *a, **k: target)
     assert not w.save_btn.isHidden() and w.dest_row.isHidden() and w.help_row.isHidden()
     add(w, "getbible:kjv")
@@ -415,6 +416,7 @@ def test_delete_question_says_what_goes_and_what_stays():
 def test_adding_to_propresenter_twice_keeps_the_first_file(app, tmp_path, monkeypatch):
     w = make(app, tmp_path, platform="mac")
     target = tmp_path / "pp"
+    target.mkdir()
     monkeypatch.setattr(export_pp, "mac_bible_folder", lambda *a, **k: target)
     add(w, "getbible:kjv")
     w._go_clicked()
@@ -661,3 +663,47 @@ def test_file_errors_are_shown_in_plain_words():
     assert plain_error(OSError(28, "No space left on device")) == "The disk is full."
     assert "Errno" not in plain_error(OSError(5, "Input/output error", "C:\\x"))
     assert plain_error(BibleError("This Bible is damaged.")) == "This Bible is damaged."
+
+
+def _answer_box(monkeypatch, label, shown):
+    def fake_exec(self):
+        shown.append((self.windowTitle(), self.text()))
+        for b in self.buttons():
+            if b.text() == label:
+                self._clicked = b
+        return 0
+    monkeypatch.setattr(QMessageBox, "exec", fake_exec)
+    monkeypatch.setattr(QMessageBox, "clickedButton", lambda self: self._clicked)
+
+
+def test_mac_without_a_propresenter_folder_asks_before_making_one(app, tmp_path, monkeypatch):
+    w = make(app, tmp_path, platform="mac")
+    target = tmp_path / "missing" / "RVBibles" / "v2"
+    monkeypatch.setattr(export_pp, "mac_bible_folder", lambda *a, **k: target)
+    add(w, "getbible:kjv")
+    shown = []
+    _answer_box(monkeypatch, "No, cancel", shown)                       # No: nothing is made, nothing is exported
+    w._go_clicked()
+    assert len(shown) == 1 and "Is ProPresenter installed?" in shown[0][1] and "Do you want me to create one?" in shown[0][1]
+    assert str(target) in shown[0][1] and not w.exporting and not (tmp_path / "missing").exists()
+    assert "Nothing was added" in w.message.text() and w.items[0].status != "done"
+    _answer_box(monkeypatch, "Create the folder", shown)                # Yes: the folder is made and the Bible added
+    w._go_clicked()
+    assert finished(app, w) and (target / "KJV.rvbible").exists() and len(shown) == 2
+    shown.clear()                                                       # the folder is there now: no question
+    add(w, "getbible:web")
+    w._go_clicked()
+    assert finished(app, w) and shown == [] and (target / "WEB.rvbible").exists()
+    w.close()
+
+
+def test_saving_files_on_mac_never_asks_about_propresenter(app, tmp_path, monkeypatch):
+    w = make(app, tmp_path, platform="mac")
+    monkeypatch.setattr(export_pp, "mac_bible_folder", lambda *a, **k: tmp_path / "missing")
+    monkeypatch.setattr("lpbibles.ui.main_window.QFileDialog.getExistingDirectory", lambda *a, **k: str(tmp_path / "out"))
+    shown = []
+    _answer_box(monkeypatch, "No, cancel", shown)
+    add(w, "getbible:kjv")
+    w._save_files_clicked()
+    assert finished(app, w) and shown == [] and (tmp_path / "out" / "KJV.rvbible").exists()
+    w.close()

@@ -790,6 +790,24 @@ class MainWindow(QMainWindow):
         else:
             self.start_export("install")
 
+    def _ask_to_create_mac_folder(self) -> bool:
+        """Mac: ProPresenter's Bibles folder is not there. It may not be installed: ask before making a folder."""
+        folder = export_pp.mac_bible_folder()
+        if folder.exists():
+            return True
+        box = QMessageBox(QMessageBox.Question, "ProPresenter's Bibles folder not found",
+                          "Is ProPresenter installed?\n\nNo Bibles folder was found. ProPresenter looks for it here:\n"
+                          f"{folder}\n\nDo you want me to create one?", QMessageBox.NoButton, self)
+        yes = box.addButton("Create the folder", QMessageBox.AcceptRole)
+        no = box.addButton("No, cancel", QMessageBox.RejectRole)
+        box.setDefaultButton(no)
+        box.setMinimumWidth(520)
+        box.exec()
+        if box.clickedButton() is yes:
+            return True
+        self.set_message("Nothing was added. Use Save files… to keep the files in a folder instead.", "dim")
+        return False
+
     def _save_files_clicked(self) -> None:
         """Mac, ProPresenter: save the files in a folder you choose instead of adding them."""
         if self.exporting:
@@ -807,6 +825,8 @@ class MainWindow(QMainWindow):
             return
         todo = [i for i in self.items if i.status != "done"]
         if not todo:
+            return
+        if mode == "install" and not self._ask_to_create_mac_folder():
             return
         self._export_started = time.monotonic()
         dest = Path(folder or self.folder)
