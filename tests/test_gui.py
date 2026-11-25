@@ -398,3 +398,23 @@ def test_delete_question_says_what_goes_and_what_stays():
     assert "Files you saved in a folder, and Bibles already added to ProPresenter, stay as they are." in m
     assert "download it again later" in m
     assert "choosing the file again" in delete_message("My Bible", True) and "download it again" not in delete_message("My Bible", True)
+
+
+def test_adding_to_propresenter_twice_keeps_the_first_file(app, tmp_path, monkeypatch):
+    w = make(app, tmp_path, platform="mac")
+    target = tmp_path / "pp"
+    monkeypatch.setattr(export_pp, "mac_bible_folder", lambda *a, **k: target)
+    add(w, "getbible:kjv")
+    w._go_clicked()
+    assert finished(app, w)
+    first_bytes = (target / "KJV.rvbible").read_bytes()
+    assert w._item("getbible:kjv").note == "added to ProPresenter"
+    # add the same Bible again (a change to the list makes it ready again)
+    w.seg.buttons["lp"].click()
+    w.seg.buttons["pp"].click()
+    w._go_clicked()
+    assert finished(app, w)
+    assert sorted(p.name for p in target.iterdir()) == ["KJV (2).rvbible", "KJV.rvbible"]
+    assert (target / "KJV.rvbible").read_bytes() == first_bytes            # the first one was not replaced
+    assert w._item("getbible:kjv").note == "added to ProPresenter as KJV (2).rvbible"
+    w.close()

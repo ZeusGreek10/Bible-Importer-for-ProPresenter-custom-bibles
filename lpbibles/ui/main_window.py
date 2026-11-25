@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEd
                                QPushButton, QScrollArea, QVBoxLayout, QWidget)
 
 from .. import catalog, export_lp, export_pp, importers
+from ..export_pp import unique_path
 from ..backend import Backend
 from ..catalog import Language
 from ..library import Library, default_numbering
@@ -41,15 +42,6 @@ def default_platform() -> str:
 def safe_name(text: str) -> str:
     t = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", text).strip(" .")
     return t or "Bible"
-
-
-def unique_path(folder: Path, base: str, ext: str) -> Path:
-    p = folder / f"{base}{ext}"
-    n = 2
-    while p.exists():
-        p = folder / f"{base} ({n}){ext}"
-        n += 1
-    return p
 
 
 def delete_message(name: str, from_file: bool) -> str:
@@ -726,7 +718,12 @@ class MainWindow(QMainWindow):
                     raise Cancelled()
                 where = self._write_one(pb, job, mode, dest, fmt)
                 ok[key] = where
-                self._emit(key, "done", Path(where).name if mode == "files" else "added to ProPresenter", None, code)
+                if mode == "files":
+                    note = Path(where).name
+                else:
+                    plain = f"{safe_name(pb.short or pb.name)}.rvbible"
+                    note = "added to ProPresenter" if Path(where).name == plain else f"added to ProPresenter as {Path(where).name}"
+                self._emit(key, "done", note, None, code)
             except Cancelled:
                 self._emit(key, "saved" if code and self.library.get(code) else "waiting", "", None, code)
                 break

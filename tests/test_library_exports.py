@@ -185,3 +185,35 @@ def test_install_windows(tmp_path):
     pref.unlink()
     with pytest.raises(BibleError):
         export_pp.install_windows_overwrite(big_bible(), choices[0], bibles)
+
+
+def test_existing_files_are_never_overwritten(tmp_path):
+    """Add to ProPresenter (Mac) and the Windows sideload copy keep a file that is already there."""
+    a = export_pp.write_rvbible(big_bible(name="First Bible", short="TB"), tmp_path / "TB.rvbible")
+    (tmp_path / "other").mkdir()
+    other = export_pp.write_rvbible(big_bible(name="Another Bible", short="TB"), tmp_path / "other" / "TB.rvbible")
+    folder = tmp_path / "pp"
+    first = export_pp.install_mac(a, folder)
+    original_bytes = first.read_bytes()
+    second = export_pp.install_mac(other, folder)           # a different Bible with the same name
+    third = export_pp.install_mac(a, folder)                # the same Bible again
+    assert [p.name for p in (first, second, third)] == ["TB.rvbible", "TB (2).rvbible", "TB (3).rvbible"]
+    assert first.read_bytes() == original_bytes             # the first file is untouched
+    assert second.read_bytes() == other.read_bytes() and second.read_bytes() != original_bytes
+    assert sorted(p.name for p in folder.iterdir()) == ["TB (2).rvbible", "TB (3).rvbible", "TB.rvbible"]
+    # the same for the Windows sideload folder
+    bibles = tmp_path / "Bibles"
+    s1 = export_pp.install_windows_sideload(a, bibles)
+    s2 = export_pp.install_windows_sideload(a, bibles)
+    assert (s1.name, s2.name) == ("TB.rvbible", "TB (2).rvbible") and s1.parent.name == "sideload"
+
+
+def test_copy_never_replaces_even_when_the_name_appears_late(tmp_path, monkeypatch):
+    """The copy is made with an 'exclusive create', so a file that shows up at the last moment is not replaced."""
+    src = tmp_path / "KJV.rvbible"
+    src.write_bytes(b"new")
+    folder = tmp_path / "pp"
+    folder.mkdir()
+    (folder / "KJV.rvbible").write_bytes(b"someone else's file")
+    dest = export_pp.copy_without_overwriting(src, folder)
+    assert dest.name == "KJV (2).rvbible" and (folder / "KJV.rvbible").read_bytes() == b"someone else's file"

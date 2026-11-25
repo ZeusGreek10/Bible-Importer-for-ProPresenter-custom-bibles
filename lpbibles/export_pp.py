@@ -109,12 +109,38 @@ def mac_bible_folder(home: Optional[Path] = None, system_root: Path = Path("/"))
     return new
 
 
-def install_mac(rvbible: Path, folder: Optional[Path] = None) -> Path:
-    folder = folder or mac_bible_folder()
+def unique_path(folder: Path, base: str, ext: str) -> Path:
+    """folder/base.ext, or folder/base (2).ext, folder/base (3).ext… when that name is taken."""
+    p = Path(folder) / f"{base}{ext}"
+    n = 2
+    while p.exists():
+        p = Path(folder) / f"{base} ({n}){ext}"
+        n += 1
+    return p
+
+
+def copy_without_overwriting(src: Path, folder: Path) -> Path:
+    """Copies a file into a folder under its own name, or "name (2)", "name (3)"… when a file with that name is
+    already there. A file that exists is never replaced, even if another program creates it a moment before."""
+    src = Path(src)
+    folder = Path(folder)
     folder.mkdir(parents=True, exist_ok=True)
-    dest = folder / Path(rvbible).name
-    shutil.copyfile(rvbible, dest)
-    return dest
+    data = src.read_bytes()
+    n = 1
+    while True:
+        dest = folder / (src.name if n == 1 else f"{src.stem} ({n}){src.suffix}")
+        try:
+            with open(dest, "xb") as f:       # "x": fails if the file exists instead of replacing it
+                f.write(data)
+            return dest
+        except FileExistsError:
+            n += 1
+
+
+def install_mac(rvbible: Path, folder: Optional[Path] = None) -> Path:
+    """Puts the .rvbible where ProPresenter on Mac looks. An existing file with the same name is kept: the new one
+    gets "(2)" in its name."""
+    return copy_without_overwriting(rvbible, folder or mac_bible_folder())
 
 
 def windows_bible_folder(programdata: Optional[str] = None) -> Path:
@@ -126,10 +152,7 @@ def windows_bible_folder(programdata: Optional[str] = None) -> Path:
 
 def install_windows_sideload(rvbible: Path, bibles_folder: Optional[Path] = None) -> Path:
     folder = (bibles_folder or windows_bible_folder()) / "sideload"
-    folder.mkdir(parents=True, exist_ok=True)
-    dest = folder / Path(rvbible).name
-    shutil.copyfile(rvbible, dest)
-    return dest
+    return copy_without_overwriting(rvbible, folder)
 
 
 _INSTALLED = re.compile(r"InstalledBiblesNew=(?P<array>\[[^\]]*?]);?")
