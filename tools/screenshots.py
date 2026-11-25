@@ -104,8 +104,10 @@ def main(out: Path) -> None:
 
     # 01 Mac, Free Bibles, ProPresenter
     w = make(app, "mac")
-    for k in ("getbible:kjv", "getbible:bsb", "getbible:darby"):
+    for k in ("getbible:kjv", "getbible:bsb", "getbible:web"):
         add(w, k)
+    w.library.disk_size = lambda: 12_400_000        # the sample Bibles are tiny; real ones are about 4 MB each
+    w._refresh_panel()
     pump(app, 0.2)
     w.grab().save(str(out / "01-Main-Free-ProPresenter.png"))
 
