@@ -210,3 +210,16 @@ def is_windows() -> bool:
 
 def is_mac() -> bool:
     return sys.platform == "darwin"
+
+
+def free_bible_code_list() -> str:
+    """The name codes of ProPresenter's own free Bibles (one per line), for the Windows explanation."""
+    free = json.loads(Path(resource_path("available_bibles.json")).read_text(encoding="utf-8"))
+    lines = ["Name code | Bible | Language"]
+    for f in sorted(free, key=lambda x: (x.get("language", ""), x.get("name", ""))):
+        lines.append(f'{f["internalAbbreviation"]} | {f.get("name", "")} | {f.get("language", "")}')
+    return "\n".join(lines)
+
+
+def windows_bibles_folder_text() -> str:
+    return r"C:\ProgramData\RenewedVision\ProPresenter\Bibles"

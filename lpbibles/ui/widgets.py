@@ -1,18 +1,18 @@
-"""Small widgets of the Add Bibles window."""
+"""Widgets of the Bible Importer window (layout from design/*.html)."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QEvent, QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPen
+from PySide6.QtCore import QRect, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter
 from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
-                               QMenu, QProgressBar, QPushButton, QSizePolicy, QStackedWidget, QStyle,
-                               QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget)
+                               QProgressBar, QPushButton, QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout, QWidget)
 
 from ..catalog import Language
-from ..library import NUMBERINGS, Installed
+from ..library import NUMBERINGS
 from ..model import Entry
 from . import theme
 
@@ -23,6 +23,31 @@ def fmt_eta(seconds: Optional[float]) -> str:
     if seconds < 60:
         return "less than 1 min"
     return f"about {round(seconds / 60)} min"
+
+
+def plural(n: int, one: str = "Bible", many: str = "Bibles") -> str:
+    return f"{n} {one if n == 1 else many}"
+
+
+def step_header(number: str, text: str) -> tuple[QWidget, QLabel]:
+    """The orange numbered circle with a small-caps title. Returns (widget, label on the right)."""
+    w = QWidget()
+    h = QHBoxLayout(w)
+    h.setContentsMargins(0, 0, 0, 0)
+    h.setSpacing(8)
+    n = QLabel(number)
+    n.setObjectName("stepnum")
+    n.setFixedSize(18, 18)
+    n.setAlignment(Qt.AlignCenter)
+    t = QLabel(text)
+    t.setObjectName("steptext")
+    h.addWidget(n)
+    h.addWidget(t)
+    h.addStretch(1)
+    r = QLabel("")
+    r.setObjectName("stepright")
+    h.addWidget(r)
+    return w, r
 
 
 # ---- language list -----------------------------------------------------------------------------------
@@ -50,15 +75,15 @@ class LanguageDelegate(QStyledItemDelegate):
         f.setBold(selected)
         p.setFont(f)
         p.setPen(QColor("#ffffff" if selected else theme.TEXT2))
-        p.drawText(QRect(r.left() + 16, r.top(), r.width() - 70, r.height()), Qt.AlignVCenter | Qt.AlignLeft,
-                   p.fontMetrics().elidedText(lang.native, Qt.ElideRight, r.width() - 80))
+        p.drawText(QRect(r.left() + 16, r.top(), r.width() - 60, r.height()), Qt.AlignVCenter | Qt.AlignLeft,
+                   p.fontMetrics().elidedText(lang.native, Qt.ElideRight, r.width() - 70))
         if lang.count is not None:
             f2 = QFont(option.font)
             f2.setPixelSize(11)
             f2.setBold(True)
             p.setFont(f2)
             p.setPen(QColor(theme.DIM))
-            p.drawText(QRect(r.right() - 54, r.top(), 40, r.height()), Qt.AlignVCenter | Qt.AlignRight, str(lang.count))
+            p.drawText(QRect(r.right() - 48, r.top(), 34, r.height()), Qt.AlignVCenter | Qt.AlignRight, str(lang.count))
         p.restore()
 
 
@@ -74,14 +99,12 @@ class LanguageList(QListWidget):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setFrameShape(QFrame.NoFrame)
         self.currentItemChanged.connect(self._changed)
-        self._languages: list[Language] = []
 
     def _changed(self, cur: Optional[QListWidgetItem], _prev) -> None:
         if cur is not None:
             self.chosen.emit(cur.data(Qt.UserRole))
 
     def set_languages(self, languages: list[Language], select: Optional[str] = None) -> None:
-        self._languages = languages
         self.blockSignals(True)
         self.clear()
         for lang in languages:
@@ -101,29 +124,31 @@ class LanguageList(QListWidget):
 # ---- one Bible of a catalog ---------------------------------------------------------------------------
 
 class BibleRow(QFrame):
-    download_clicked = Signal(object)
-    cancel_clicked = Signal(object)
+    add_clicked = Signal(object)
 
-    # short name, tag, size, action: widths from the renderings (the Bible.com tab has a wider action column)
-    COLS = (62, 74, 54, 188)
-    COLS_WIDE = (62, 74, 30, 300)
-
-    def __init__(self, entry: Entry, last: bool = False, cancel_text: bool = False):
+    def __init__(self, entry: Entry, last: bool, in_list: bool, saved: bool):
         super().__init__()
         self.entry = entry
         self.setObjectName("brow")
         self.setProperty("last", last)
-        self.setMinimumHeight(33)
-        self._cancel_text = cancel_text
-        self.cols = self.COLS_WIDE if cancel_text else self.COLS
+        self.setMinimumHeight(36)
         g = QGridLayout(self)
         g.setContentsMargins(12, 0, 12, 0)
         g.setHorizontalSpacing(10)
         g.setVerticalSpacing(0)
-        self.name = QLabel(entry.name)
-        self.name.setObjectName("name")
-        self.name.setToolTip(entry.name)
-        self.name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        namebox = QWidget()
+        nv = QVBoxLayout(namebox)
+        nv.setContentsMargins(0, 3, 0, 3)
+        nv.setSpacing(0)
+        name = QLabel(entry.name)
+        name.setObjectName("name")
+        name.setToolTip(entry.name)
+        name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        nv.addWidget(name)
+        if saved:
+            s = QLabel("saved on this computer")
+            s.setObjectName("saved")
+            nv.addWidget(s)
         short = QLabel(entry.short)
         short.setObjectName("short")
         tag = QLabel("Licensed" if entry.licensed else "Free")
@@ -134,199 +159,207 @@ class BibleRow(QFrame):
         tl.setContentsMargins(0, 0, 0, 0)
         tl.addWidget(tag, 0, Qt.AlignLeft | Qt.AlignVCenter)
         tl.addStretch(1)
-        self.size = QLabel(self._size_text())
-        self.size.setObjectName("size")
-        self.size.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-
-        self.stack = QStackedWidget()
-        self.stack.setFixedWidth(self.cols[3])
-        self.stack.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-        # 0 download, 1 busy, 2 installed, 3 failed
-        self.btn = QPushButton("Download")
-        self.btn.setObjectName("download")
-        self.btn.setCursor(Qt.PointingHandCursor)
-        self.btn.clicked.connect(lambda: self.download_clicked.emit(self.entry))
-        self.stack.addWidget(self._right(self.btn))
-        busy = QWidget()
-        bl = QHBoxLayout(busy)
-        bl.setContentsMargins(0, 0, 0, 0)
-        bl.setSpacing(8)
-        col = QVBoxLayout()
-        col.setSpacing(3)
-        col.setContentsMargins(0, 0, 0, 0)
-        self.ptext = QLabel("Downloading…")
-        self.ptext.setObjectName("progresstext")
-        self.ptext.setWordWrap(True)
-        self.bar = QProgressBar()
-        self.bar.setTextVisible(False)
-        self.bar.setRange(0, 1000)
-        col.addWidget(self.ptext)
-        col.addWidget(self.bar)
-        bl.addLayout(col, 1)
-        if cancel_text:
-            self.cancel = QPushButton("Cancel")
-            self.cancel.setObjectName("cancel")
-        else:
-            self.cancel = QPushButton("✕")
-            self.cancel.setObjectName("cancelx")
-            self.cancel.setFixedSize(20, 20)
-        self.cancel.setCursor(Qt.PointingHandCursor)
-        self.cancel.setToolTip("Cancel")
-        self.cancel.clicked.connect(lambda: self.cancel_clicked.emit(self.entry))
-        bl.addWidget(self.cancel, 0, Qt.AlignVCenter)
-        self.stack.addWidget(busy)
-        self.ins = QLabel("Installed ✓")
-        self.ins.setObjectName("installed")
-        self.stack.addWidget(self._right(self.ins))
-        failed = QWidget()
-        fl = QHBoxLayout(failed)
-        fl.setContentsMargins(0, 0, 0, 0)
-        fl.addStretch(1)
-        self.retry = QPushButton("Retry")
-        self.retry.setObjectName("retry")
-        self.retry.setCursor(Qt.PointingHandCursor)
-        self.retry.clicked.connect(lambda: self.download_clicked.emit(self.entry))
-        fl.addWidget(self.retry)
-        self.stack.addWidget(failed)
-
-        g.addWidget(self.name, 0, 0)
+        size = QLabel(self._size_text(entry))
+        size.setObjectName("size")
+        size.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        self.add = QPushButton("＋ Add")
+        self.add.setObjectName("add")
+        self.add.setCursor(Qt.PointingHandCursor)
+        self.add.setAccessibleName(f"Add {entry.short} to the list")
+        self.add.clicked.connect(lambda: self.add_clicked.emit(self.entry))
+        self.inlist = QLabel("In list ✓")
+        self.inlist.setObjectName("inlist")
+        action = QWidget()
+        action.setFixedWidth(118)
+        al = QHBoxLayout(action)
+        al.setContentsMargins(0, 0, 0, 0)
+        al.addStretch(1)
+        al.addWidget(self.add)
+        al.addWidget(self.inlist)
+        g.addWidget(namebox, 0, 0)
         g.addWidget(short, 0, 1)
         g.addWidget(tag_cell, 0, 2)
-        g.addWidget(self.size, 0, 3)
-        g.addWidget(self.stack, 0, 4)
+        g.addWidget(size, 0, 3)
+        g.addWidget(action, 0, 4)
         g.setColumnStretch(0, 1)
-        g.setColumnMinimumWidth(1, self.cols[0])
-        g.setColumnMinimumWidth(2, self.cols[1])
-        g.setColumnMinimumWidth(3, self.cols[2])
-        self.state = "idle"
+        g.setColumnMinimumWidth(1, 54)
+        g.setColumnMinimumWidth(2, 70)
+        g.setColumnMinimumWidth(3, 40)
+        self.set_in_list(in_list)
 
     @staticmethod
-    def _right(w: QWidget) -> QWidget:
-        host = QWidget()
-        h = QHBoxLayout(host)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.addStretch(1)
-        h.addWidget(w)
-        return host
-
-    def _size_text(self) -> str:
-        e = self.entry
+    def _size_text(e: Entry) -> str:
         if e.size_mb:
             return f"{max(1, round(e.size_mb))} MB"
         return "NT" if e.note == "NT only" else "—"
 
-    def set_state(self, state: str, text: str = "", fraction: Optional[float] = None) -> None:
-        """state: idle, busy, installed, failed."""
-        self.state = state
-        self.setMinimumHeight(58 if (state == "busy" and self._cancel_text) else 33)
-        self.stack.setCurrentIndex({"idle": 0, "busy": 1, "installed": 2, "failed": 3}[state])
-        if state == "busy":
-            self.ptext.setText(text or "Downloading…")
-            if fraction is None:
-                self.bar.setValue(0)
-            else:
-                self.bar.setValue(int(max(0.0, min(1.0, fraction)) * 1000))
-            self.cancel.setEnabled(True)
-        self.size.setText("Failed" if state == "failed" else self._size_text())
-        self.size.setObjectName("size")
-        self.size.setStyleSheet(f"color: {theme.FAILED}; font-size: 11px;" if state == "failed" else "")
-
-    def set_cancelling(self) -> None:
-        self.ptext.setText("Cancelling…")
-        self.cancel.setEnabled(False)
+    def set_in_list(self, on: bool) -> None:
+        self.add.setVisible(not on)
+        self.inlist.setVisible(on)
 
 
-# ---- installed list ------------------------------------------------------------------------------------
+# ---- your list ----------------------------------------------------------------------------------------
 
-class InstalledRow(QFrame):
-    numbering_changed = Signal(str, str)
+@dataclass
+class ListItem:
+    key: str                       # entry key, or "file:<code>" for a file
+    entry: Optional[Entry]
+    short: str
+    name: str
+    status: str = "waiting"        # waiting, saved, busy, done, failed
+    note: str = ""                 # small text under the name
+    fraction: Optional[float] = None
+    numbering: str = "kjv"
+    code: str = ""                 # code in the local library once saved
+    done_text: str = "Exported ✓"
+
+
+class ListItemRow(QFrame):
     remove_clicked = Signal(str)
-    export_json = Signal(str)
-    export_rvbible = Signal(str)
-    install_pp = Signal(str)
+    numbering_changed = Signal(str, str)
 
-    def __init__(self, item: Installed, last: bool, can_install: bool):
+    def __init__(self, item: ListItem):
         super().__init__()
-        self.code = item.code
+        self.key = item.key
         self.setObjectName("irow")
-        self.setProperty("last", last)
-        self.setFixedHeight(30)
-        h = QHBoxLayout(self)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(10)
-        chip_cell = QWidget()
-        chip_cell.setFixedWidth(96)
-        cl = QHBoxLayout(chip_cell)
+        self.setMinimumHeight(42)
+        g = QGridLayout(self)
+        g.setContentsMargins(10, 6, 10, 6)
+        g.setHorizontalSpacing(9)
+        g.setVerticalSpacing(0)
+        self.chip = QLabel(item.short)
+        self.chip.setObjectName("chip")
+        chipcell = QWidget()
+        chipcell.setFixedWidth(62)
+        cl = QHBoxLayout(chipcell)
         cl.setContentsMargins(0, 0, 0, 0)
-        chip = QLabel(item.short)
-        chip.setObjectName("chip")
-        chip.setMaximumWidth(96)
-        cl.addWidget(chip, 0, Qt.AlignLeft | Qt.AlignVCenter)
+        cl.addWidget(self.chip, 0, Qt.AlignLeft | Qt.AlignVCenter)
         cl.addStretch(1)
-        h.addWidget(chip_cell)
-        name = QLabel(item.name)
-        name.setObjectName("iname")
-        name.setToolTip(item.copyright[:600] if item.copyright else item.name)
-        name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
-        h.addWidget(name, 1)
-        combo = QComboBox()
-        combo.setFixedWidth(168)
+        mid = QWidget()
+        mv = QVBoxLayout(mid)
+        mv.setContentsMargins(0, 0, 0, 0)
+        mv.setSpacing(2)
+        self.name = QLabel(item.name)
+        self.name.setObjectName("iname")
+        self.name.setWordWrap(True)
+        self.name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.sub = QLabel("")
+        self.sub.setObjectName("isub")
+        self.sub.setWordWrap(True)
+        self.sub.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
+        self.bar = QProgressBar()
+        self.bar.setTextVisible(False)
+        self.bar.setRange(0, 1000)
+        mv.addWidget(self.name)
+        mv.addWidget(self.sub)
+        mv.addWidget(self.bar)
+        self.status = QLabel("")
+        self.picker = QComboBox()
+        self.picker.setFixedWidth(116)
         for key, title in NUMBERINGS.items():
-            combo.addItem(title, key)
-        combo.setCurrentIndex(max(0, combo.findData(item.numbering)))
-        combo.setAccessibleName(f"Numbering of {item.short}")
-        combo.currentIndexChanged.connect(lambda _i: self.numbering_changed.emit(self.code, combo.currentData()))
-        h.addWidget(combo)
-        export = QToolButton()
-        export.setObjectName("small")
-        export.setText("Export ▾")
-        export.setPopupMode(QToolButton.InstantPopup)
-        export.setFixedWidth(76)
-        export.setCursor(Qt.PointingHandCursor)
-        menu = QMenu(export)
-        menu.addAction("For Live Presenter (.json)…", lambda: self.export_json.emit(self.code))
-        menu.addAction("For ProPresenter (.rvbible)…", lambda: self.export_rvbible.emit(self.code))
-        menu.addSeparator()
-        a = menu.addAction("Install in ProPresenter…", lambda: self.install_pp.emit(self.code))
-        a.setEnabled(can_install)
-        if not can_install:
-            a.setToolTip("ProPresenter installs on Mac and Windows only")
-        export.setMenu(menu)
-        h.addWidget(export)
-        remove = QPushButton("Remove")
-        remove.setObjectName("small")
-        remove.setFixedWidth(72)
-        remove.setCursor(Qt.PointingHandCursor)
-        remove.setAccessibleName(f"Remove {item.short}")
-        remove.clicked.connect(lambda: self.remove_clicked.emit(self.code))
-        h.addWidget(remove)
+            self.picker.addItem(title, key)
+        self.picker.setAccessibleName(f"Verse numbering of {item.short}")
+        self.picker.setToolTip("How the verses of the Psalms are numbered")
+        self.picker.currentIndexChanged.connect(lambda _i: self.numbering_changed.emit(self.key, self.picker.currentData()))
+        right = QWidget()
+        rl = QHBoxLayout(right)
+        rl.setContentsMargins(0, 0, 0, 0)
+        rl.addWidget(self.status, 0, Qt.AlignRight | Qt.AlignVCenter)
+        rl.addWidget(self.picker, 0, Qt.AlignRight | Qt.AlignVCenter)
+        self.remove = QPushButton("✕")
+        self.remove.setObjectName("x")
+        self.remove.setFixedSize(20, 20)
+        self.remove.setCursor(Qt.PointingHandCursor)
+        self.remove.setToolTip("Take it out of the list")
+        self.remove.setAccessibleName(f"Remove {item.short} from the list")
+        self.remove.clicked.connect(lambda: self.remove_clicked.emit(self.key))
+        g.addWidget(chipcell, 0, 0)
+        g.addWidget(mid, 0, 1)
+        g.addWidget(right, 0, 2)
+        g.addWidget(self.remove, 0, 3, Qt.AlignVCenter)
+        g.setColumnStretch(1, 1)
+        self.apply(item, show_picker=False, can_remove=True)
+
+    def apply(self, item: ListItem, show_picker: bool, can_remove: bool) -> None:
+        self.name.setText(item.name)
+        self.sub.setText(item.note)
+        self.sub.setVisible(bool(item.note))
+        self.sub.setObjectName("isuberr" if item.status == "failed" else "isub")
+        self.sub.style().unpolish(self.sub)
+        self.sub.style().polish(self.sub)
+        busy = item.status == "busy"
+        self.bar.setVisible(busy and item.fraction is not None)
+        if item.fraction is not None:
+            self.bar.setValue(int(max(0.0, min(1.0, item.fraction)) * 1000))
+        pick = show_picker and item.status in ("waiting", "saved")
+        self.picker.setVisible(pick)
+        self.picker.blockSignals(True)
+        self.picker.setCurrentIndex(max(0, self.picker.findData(item.numbering)))
+        self.picker.blockSignals(False)
+        text, obj = {"waiting": ("Waiting", "st_wait"), "saved": ("Saved ✓", "st_ok"), "busy": ("", "st_wait"),
+                     "done": (item.done_text, "st_ok"), "failed": ("Failed", "st_fail")}[item.status]
+        self.status.setText(text)
+        self.status.setObjectName(obj)
+        self.status.style().unpolish(self.status)
+        self.status.style().polish(self.status)
+        self.status.setVisible(not pick and bool(text))
+        self.remove.setEnabled(can_remove)
 
 
-# ---- import drop zone ---------------------------------------------------------------------------------
+# ---- the format switch -------------------------------------------------------------------------------
 
-class DropZone(QFrame):
-    import_clicked = Signal()
+class Segmented(QFrame):
+    changed = Signal(str)
+
+    def __init__(self, options: list[tuple[str, str]]):
+        super().__init__()
+        self.setObjectName("seg")
+        h = QHBoxLayout(self)
+        h.setContentsMargins(3, 3, 3, 3)
+        h.setSpacing(0)
+        self.buttons: dict[str, QPushButton] = {}
+        for key, text in options:
+            b = QPushButton(text)
+            b.setObjectName("segbtn")
+            b.setCheckable(True)
+            b.setAutoExclusive(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _c=False, k=key: self.changed.emit(k))
+            h.addWidget(b, 1)
+            self.buttons[key] = b
+
+    def set_value(self, key: str) -> None:
+        self.buttons[key].setChecked(True)
+
+    def set_enabled(self, on: bool) -> None:
+        for b in self.buttons.values():
+            b.setEnabled(on)
+
+
+# ---- drop area of the "From a file" tab ------------------------------------------------------------------
+
+class DropArea(QFrame):
+    choose_clicked = Signal()
     files_dropped = Signal(list)
 
     def __init__(self):
         super().__init__()
         self.setObjectName("dz")
         self.setAcceptDrops(True)
-        self.setFixedWidth(360)
         v = QVBoxLayout(self)
-        v.setContentsMargins(18, 8, 18, 8)
-        v.setSpacing(7)
+        v.setContentsMargins(24, 24, 24, 24)
+        v.setSpacing(10)
         v.addStretch(1)
-        btn = QPushButton("Import a file…")
+        btn = QPushButton("Choose a file…")
         btn.setObjectName("importbtn")
         btn.setCursor(Qt.PointingHandCursor)
-        btn.clicked.connect(self.import_clicked)
+        btn.clicked.connect(self.choose_clicked)
         v.addWidget(btn, 0, Qt.AlignHCenter)
         p = QLabel("Drop a Bible file here.\nOnly add Bibles you have the right to use.")
         p.setObjectName("dzp")
         p.setAlignment(Qt.AlignCenter)
         v.addWidget(p)
-        s = QLabel("Zefania · OSIS · USX · USFM · USFX · ProPresenter .rvbible · JSON")
+        s = QLabel("Zefania · OSIS · USX · USFM · USFX · ProPresenter .rvbible · Live Presenter / getBible JSON")
         s.setObjectName("dzsmall")
         s.setAlignment(Qt.AlignCenter)
         s.setWordWrap(True)

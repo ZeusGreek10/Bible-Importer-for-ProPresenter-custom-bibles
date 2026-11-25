@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import threading
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Optional
@@ -53,12 +54,23 @@ def _atomic_write(path: Path, data: str) -> None:
     os.replace(tmp, path)
 
 
+def _locked(method):
+    """The export runs in a background thread while the window reads the list: one at a time."""
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+    wrapper.__name__ = method.__name__
+    wrapper.__doc__ = method.__doc__
+    return wrapper
+
+
 class Library:
     def __init__(self, root: Path):
         self.folder = Path(root) / "Bibles"
         self.folder.mkdir(parents=True, exist_ok=True)
         self.index_path = self.folder / "index.json"
         self.items: list[Installed] = []
+        self._lock = threading.RLock()
         self._load()
 
     # ---- reading --------------------------------------------------------------------------------
@@ -80,12 +92,15 @@ class Library:
         _atomic_write(self.index_path, json.dumps({"format": FORMAT, "bibles": [asdict(i) for i in self.items]},
                                                   ensure_ascii=False, indent=1))
 
+    @_locked
     def get(self, code: str) -> Optional[Installed]:
         return next((i for i in self.items if i.code == code), None)
 
+    @_locked
     def is_installed(self, source_key: str) -> bool:
         return bool(source_key) and any(i.source_key == source_key for i in self.items)
 
+    @_locked
     def load(self, code: str) -> ParsedBible:
         """The whole Bible, read from its file."""
         item = self.get(code)
@@ -103,6 +118,7 @@ class Library:
 
     # ---- writing --------------------------------------------------------------------------------
 
+    @_locked
     def save(self, pb: ParsedBible, source: str, source_key: str = "") -> Installed:
         """Checks and saves a Bible. Replaces the one with the same source_key (a second download)."""
         pb.validate()
@@ -130,12 +146,14 @@ class Library:
         self._save_index()
         return item
 
+    @_locked
     def set_numbering(self, code: str, numbering: str) -> None:
         item = self.get(code)
         if item and numbering in NUMBERINGS:
             item.numbering = numbering
             self._save_index()
 
+    @_locked
     def remove(self, code: str) -> None:
         item = self.get(code)
         if item is None:
