@@ -55,7 +55,7 @@ Needs Python 3.10 or newer (the ready-made apps are built with 3.10).
 pip install -r requirements-gui.txt
 python bible_gui.py
 ```
-Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow, then choose **mac** (a `.dmg` disk image), **windows** (a zip) or **all**. It runs the tests first, then builds the app and keeps the result as a download on the run page. It only runs when you press the button (the old build of the command-line tool on every push is gone; it is in the git history). The Mac app runs on Intel and Apple-chip Macs; if that universal build ever fails, the workflow builds an Apple-chip-only app and says so in the run summary.
+Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workflow, it builds **both** the Mac app (a `.dmg` disk image) and the Windows app (a zip) unless you pick **mac** or **windows** in the box to build only one. It runs the tests first, then builds the app and keeps the result as a download on the run page. It only runs when you press the button (the old build of the command-line tool on every push is gone; it is in the git history). The Mac app runs on Intel and Apple-chip Macs; if that universal build ever fails, the workflow builds an Apple-chip-only app and says so in the run summary.
 
 The Mac app is not signed or notarized by Apple. First launch: open the `.dmg`, drag **Bible Importer** to **Applications**, open it once, then on macOS 15 and later go to System Settings › Privacy & Security › **Open Anyway**; on macOS 13–14 right-click the app › Open.
 

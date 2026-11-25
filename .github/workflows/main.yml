@@ -2,10 +2,10 @@ name: Build the Bible Importer app
 
 # Runs only when you press "Run workflow" (Actions tab); it no longer starts by itself on every push.
 # (This file replaces the old one that built the command-line tool on every push; see git history.)
-# Pick what to build:
-#   mac     a Mac disk image (.dmg)
-#   windows a zip with the Windows app
-#   all     both
+# Pick what to build (it builds BOTH unless you choose one):
+#   all     the Mac disk image (.dmg) and the Windows zip
+#   mac     only the Mac disk image (.dmg)
+#   windows only the zip with the Windows app
 # Tests run first on Linux (cheap); the apps are built only if they pass.
 on:
   workflow_dispatch:
@@ -13,8 +13,8 @@ on:
       only:
         description: 'What to build'
         type: choice
-        default: mac
-        options: [mac, windows, all]
+        default: all
+        options: [all, mac, windows]
 
 jobs:
   test:
