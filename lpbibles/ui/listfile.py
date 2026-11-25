@@ -30,6 +30,8 @@ def load_list(path: Path, library: Library) -> list[ListItem]:
         raw = doc["items"]
     except (OSError, ValueError, KeyError, TypeError):
         return []
+    if not isinstance(raw, list):               # a damaged file must never stop the app from starting
+        return []
     out: list[ListItem] = []
     seen: set[str] = set()
     for d in raw:
@@ -50,6 +52,6 @@ def load_list(path: Path, library: Library) -> list[ListItem]:
             out.append(ListItem(key=key, entry=entry, short=str(d["short"]), name=str(d["name"]),
                                 status="saved" if code else "waiting", note=note, numbering=numbering, code=code))
             seen.add(key)
-        except (KeyError, TypeError):
+        except (KeyError, TypeError, ValueError, AttributeError):
             continue
     return out

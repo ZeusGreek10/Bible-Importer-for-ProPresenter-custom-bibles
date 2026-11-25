@@ -154,3 +154,14 @@ def test_after_an_undo_there_is_no_dead_end(app, tmp_path, monkeypatch):
     answer(monkeypatch, "Undo")
     d.undo_it()
     assert not d.auto_btn.isEnabled() and "again" in d.auto_msg.text() and d.steps_host.isHidden()
+
+
+def test_a_double_click_on_make_them_ready_does_not_close_the_window(app, tmp_path):
+    d = make(tmp_path, pp_folder(tmp_path))
+    d.make_ready()
+    done = [b for b in d.findChildren(type(d.make_btn)) if b.text() == "Done"][0]
+    done.click()                                   # the second click of a double click
+    assert d.result() == 0 and d.isVisible() is False
+    d._ready_shown -= 5                            # a person who has read the steps
+    done.click()
+    assert d.result() == 1

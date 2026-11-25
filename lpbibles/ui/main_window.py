@@ -6,10 +6,11 @@ import html
 import re
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QLocale, QSettings, QStandardPaths, Qt, QUrl, Signal
+from PySide6.QtCore import QLocale, QSettings, QStandardPaths, QTimer, Qt, QUrl, Signal
 from PySide6.QtGui import QCloseEvent, QDesktopServices
 from PySide6.QtWidgets import (QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
                                QPushButton, QScrollArea, QVBoxLayout, QWidget)
@@ -37,6 +38,20 @@ BC_NOTE = "Bible.com can change without notice. If a download fails, import a fi
 
 def system_language_name() -> str:
     return QLocale.languageToString(QLocale.system().language())
+
+
+MAX_ROWS = 150          # more rows than this make the window freeze for seconds
+
+
+def plain_error(e: Exception) -> str:
+    """A problem in words a volunteer can read (a file error is never shown as Python prints it)."""
+    if isinstance(e, OSError) and not isinstance(e, (NetworkError, BibleError)):
+        if isinstance(e, PermissionError):
+            return "The folder does not allow saving files here. Choose another folder."
+        if getattr(e, "errno", None) == 28:
+            return "The disk is full."
+        return "The file could not be saved. Check that the folder is still there, then try again."
+    return str(e)
 
 
 def default_platform() -> str:
@@ -82,6 +97,12 @@ class MainWindow(QMainWindow):
         self.library = library
         self.backend = backend
         self.platform = platform or default_platform()          # "mac" or "win" (win: save the files only)
+        self._export_started = 0.0
+        self._cap_note = False
+        self._search_timer = QTimer(self)
+        self._search_timer.setSingleShot(True)
+        self._search_timer.setInterval(250)
+        self._search_timer.timeout.connect(self._rebuild_rows)
         self.settings = settings or QSettings("Bible Importer", "Bible Importer")
         self.system_language = system_language or system_language_name()
         self.runner = Runner()
@@ -428,6 +449,9 @@ class MainWindow(QMainWindow):
         self.bible_search.setText(self.searches[key])
         self.lang_search.blockSignals(False)
         self.bible_search.blockSignals(False)
+        if key == "free" and not self.free_loaded and "load-free" not in self.runner.events:
+            self.set_message("Loading the list…", "dim")
+            self.runner.start("load-free", lambda cancel, progress: self.backend.load_free(cancel))
         if key == "biblecom" and not self.bc_loaded and "load-bc-langs" not in self.runner.events:
             self.set_message("Loading the list…", "dim")
             self.runner.start("load-bc-langs", lambda cancel, progress: self.backend.bc_languages(cancel))
@@ -451,7 +475,7 @@ class MainWindow(QMainWindow):
 
     def _bible_search_changed(self, text: str) -> None:
         self.searches[self.tab] = text
-        self._rebuild_rows()
+        self._search_timer.start()              # rebuild when the typing pauses, not on every letter
 
     def _language_chosen(self, lang: Language) -> None:
         self.selected[self.tab] = lang.english
@@ -481,6 +505,13 @@ class MainWindow(QMainWindow):
         self._clear(self.list_layout)
         self.rows.clear()
         entries = self._visible_entries()
+        if len(entries) > MAX_ROWS:
+            self.set_message(f"Showing the first {MAX_ROWS} of {len(entries)} Bibles. Type more letters to narrow it down.", "dim")
+            self._cap_note = True
+            entries = entries[:MAX_ROWS]
+        elif self._cap_note:
+            self._cap_note = False
+            self.set_message("", "dim")
         for i, e in enumerate(entries):
             row = BibleRow(e, last=(i == len(entries) - 1), in_list=self._item(e.key) is not None,
                            saved=self.library.is_installed(e.key))
@@ -494,7 +525,7 @@ class MainWindow(QMainWindow):
     def add_to_list(self, entry: Entry) -> None:
         if self._item(entry.key) is not None:
             return
-        self._reset_done()
+        self._reset_done(keep_finished=True)
         saved = self.library.is_installed(entry.key)
         item = ListItem(key=entry.key, entry=entry, short=entry.short, name=entry.name,
                         status="saved" if saved else "waiting", note="saved on this computer" if saved else "",
@@ -516,7 +547,7 @@ class MainWindow(QMainWindow):
             # a Bible from a file lives only as its saved copy: taking it out of the list deletes that copy (after asking)
             self.delete_saved(key)
             return
-        self._reset_done()
+        self._reset_done(keep_finished=True)
         self.items.remove(item)
         row = self.rows.get(key)
         if row:
@@ -593,13 +624,15 @@ class MainWindow(QMainWindow):
             item.numbering = value
             self._save_list()
 
-    def _reset_done(self) -> None:
+    def _reset_done(self, keep_finished: bool = False) -> None:
         """Something changed: the old 'done' marks and the done box no longer describe the list.
+        keep_finished: a Bible was only added or removed, so the ones already exported stay marked as exported
+        (exporting them again would put a second copy "(2)" in ProPresenter).
         (Not while an export is running: its marks are still being made.)"""
         if self.exporting:
             return
         for i in self.items:
-            if i.status in ("done", "failed"):
+            if i.status == "failed" or (i.status == "done" and not keep_finished):
                 i.status = "saved" if self.library.is_installed(i.key) else "waiting"
                 i.note = "saved on this computer" if i.status == "saved" else ""
         self.last_done = None
@@ -736,6 +769,8 @@ class MainWindow(QMainWindow):
 
     def _go_clicked(self) -> None:
         if self.exporting:
+            if time.monotonic() - self._export_started < 1.0:
+                return                          # the second click of a double click: not meant as Cancel
             self.runner.cancel("export")
             self.go.setEnabled(False)
             self.go.setText("Cancelling…")
@@ -744,6 +779,16 @@ class MainWindow(QMainWindow):
             self.start_export("install")
         else:
             self.start_export("files")
+
+    def _retry_clicked(self) -> None:
+        """Retry the failed ones the same way the first try went (a folder you chose stays that folder)."""
+        d = self.last_done
+        if self.exporting or not d:
+            return
+        if d["mode"] == "files":
+            self.start_export("files", Path(d["dest"]))
+        else:
+            self.start_export("install")
 
     def _save_files_clicked(self) -> None:
         """Mac, ProPresenter: save the files in a folder you choose instead of adding them."""
@@ -763,6 +808,7 @@ class MainWindow(QMainWindow):
         todo = [i for i in self.items if i.status != "done"]
         if not todo:
             return
+        self._export_started = time.monotonic()
         dest = Path(folder or self.folder)
         if mode == "files":
             try:
@@ -836,7 +882,7 @@ class MainWindow(QMainWindow):
                 self._emit(key, "saved" if code and self.library.get(code) else "waiting", "", None, code)
                 break
             except (NetworkError, BibleError, OSError) as e:
-                msg = BIBLECOM_FAIL if (entry is not None and entry.source == "biblecom" and isinstance(e, NetworkError)) else str(e)
+                msg = BIBLECOM_FAIL if (entry is not None and entry.source == "biblecom" and isinstance(e, NetworkError)) else plain_error(e)
                 failed[key] = msg
                 self._emit(key, "failed", msg, None, code)
             except Exception as e:  # never let the export thread die silently
@@ -978,7 +1024,7 @@ class MainWindow(QMainWindow):
             if d["fmt"] == "pp" and self.platform != "mac" and ok:
                 buttons.append(("Get ready for ProPresenter…", self._open_helper))
         if failed:
-            buttons.append((f"Retry the failed one" if failed == 1 else "Retry the failed ones", self._go_clicked))
+            buttons.append(("Retry the failed one" if failed == 1 else "Retry the failed ones", self._retry_clicked))
         self.done_text.setText(text)
         self._set_done_buttons(buttons)
         self.done_box.setVisible(True)
@@ -1053,7 +1099,7 @@ class MainWindow(QMainWindow):
             return
         key = f"file:{saved.code}"
         if self._item(key) is None:
-            self._reset_done()
+            self._reset_done(keep_finished=True)
             self.items.append(ListItem(key=key, entry=None, short=saved.short, name=saved.name, status="saved",
                                        note="from a file", numbering=saved.numbering, code=saved.code))
         self.set_message(f"✓ {saved.name} added to the list", "ok")
@@ -1062,6 +1108,7 @@ class MainWindow(QMainWindow):
     # ---- closing --------------------------------------------------------------------------------------
 
     def closeEvent(self, e: QCloseEvent) -> None:
+        self._save_list()                       # also when an export was running (the list is not saved during one)
         self.runner.cancel_all()
         self.runner.wait(4000)
         super().closeEvent(e)

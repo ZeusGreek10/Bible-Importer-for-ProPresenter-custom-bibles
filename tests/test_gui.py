@@ -219,6 +219,9 @@ def test_cancel(app, win):
     win._go_clicked()
     assert pump(app, lambda: win._item("getbible:slow").status == "busy")
     assert win.go.text() == "Cancel"
+    win._go_clicked()                                   # the second click of a double click: ignored
+    assert win.exporting and win.go.text() == "Cancel"
+    win._export_started = 0.0                           # a person waits a moment, then clicks Cancel
     win._go_clicked()
     assert pump(app, lambda: not win.exporting)
     assert win._item("getbible:slow").status == "waiting"
@@ -264,7 +267,15 @@ def test_changing_the_list_clears_the_done_box(app, win):
     assert finished(app, win)
     assert not win.done_box.isHidden()
     add(win, "getbible:web")
-    assert win.done_box.isHidden() and win._item("getbible:kjv").status == "saved"
+    # the done box goes, but the Bible already exported stays exported: it is not exported (and put in ProPresenter) twice
+    assert win.done_box.isHidden() and win._item("getbible:kjv").status == "done"
+    assert win.go.text() == "Export 1 Bible"
+    win._go_clicked()
+    assert finished(app, win)
+    assert sorted(p.name for p in (win.folder).iterdir()) == ["KJV.rvbible", "WEB.rvbible"]
+    # a change of format does start again
+    win.seg.buttons["lp"].click()
+    assert win._item("getbible:kjv").status == "saved"
 
 
 def test_stale_list_message(app, tmp_path):
@@ -526,6 +537,7 @@ def test_cleanup_is_off_while_exporting(app, win):
     win._go_clicked()
     assert pump(app, lambda: win._item("getbible:slow").status == "busy")
     assert not win.cleanup_btn.isEnabled()
+    win._export_started = 0.0
     win._go_clicked()
     pump(app, lambda: not win.exporting)
     assert win.cleanup_btn.isEnabled()
@@ -571,3 +583,81 @@ def test_exported_files_have_safe_names(app, win, tmp_path):
     win._go_clicked()
     assert finished(app, win)
     assert [p.name for p in (tmp_path / "out").iterdir()] == ["_CON.rvbible"]
+
+
+# ---- from the second code review ------------------------------------------------------------------------
+
+def test_a_damaged_list_file_does_not_stop_the_app(app, tmp_path):
+    from lpbibles.ui.listfile import load_list
+    lib = Library(tmp_path / "d")
+    for text in ('{"items": null}', '{"items": 5}', '[]', '{"items": [1, "x", null, {"key": 3}]}', "not json"):
+        f = tmp_path / "list.json"
+        f.write_text(text, encoding="utf-8")
+        assert load_list(f, lib) == []
+        w = make(app, tmp_path / "w", list_path=f)
+        assert w.items == []
+        w.close()
+
+
+def test_retry_goes_to_the_folder_that_was_chosen(app, tmp_path, monkeypatch):
+    w = make(app, tmp_path, platform="mac")
+    chosen = tmp_path / "chosen"
+    monkeypatch.setattr("lpbibles.ui.main_window.QFileDialog.getExistingDirectory", lambda *a, **k: str(chosen))
+    w.backend.errors["getbible:web"] = netutil.NetworkError("No internet connection.")
+    add(w, "getbible:kjv")
+    add(w, "getbible:web")
+    w._save_files_clicked()
+    assert finished(app, w)
+    assert [p.name for p in chosen.iterdir()] == ["KJV.rvbible"]
+    installed = []
+    monkeypatch.setattr(export_pp, "install_mac", lambda *a, **k: installed.append(a) or Path("x"))
+    w.last_done and w._retry_clicked()
+    assert pump(app, lambda: not w.exporting)
+    assert sorted(p.name for p in chosen.iterdir()) == ["KJV.rvbible", "WEB.rvbible"] and not installed
+    w.close()
+
+
+def test_the_list_is_saved_when_the_window_is_closed_during_an_export(app, tmp_path):
+    lp = tmp_path / "list.json"
+    w = make(app, tmp_path, list_path=lp)
+    w.backend.slow.add("getbible:slow")
+    add(w, "getbible:slow")
+    w._go_clicked()
+    assert pump(app, lambda: w._item("getbible:slow").status == "busy")
+    add(w, "getbible:web")                               # added while exporting
+    w.close()
+    assert [d["short"] for d in json.loads(lp.read_text(encoding="utf-8"))["items"]] == ["SLOW", "WEB"]
+
+
+def test_the_free_list_is_asked_again_when_it_did_not_load(app, tmp_path):
+    w = make(app, tmp_path)
+    w.free_loaded = False
+    calls = []
+    real = w.backend.load_free
+    w.backend.load_free = lambda cancel: calls.append(1) or real(cancel)
+    w.tab_buttons["biblecom"].click()
+    w.tab_buttons["free"].click()
+    assert pump(app, lambda: w.free_loaded) and calls
+    w.close()
+
+
+def test_a_search_with_thousands_of_matches_stays_quick(app, tmp_path):
+    w = make(app, tmp_path)
+    w.free_entries = [Entry(key=f"getbible:x{i}", source="getbible", name=f"Test Bible {i}", short=f"T{i}", language="English",
+                            lang_code="en") for i in range(1500)]
+    t0 = time.time()
+    w.bible_search.setText("t")
+    assert pump(app, lambda: len(w.rows) == 150)
+    assert "first 150 of 1500" in w.message.text() and time.time() - t0 < 3
+    w.bible_search.setText("Test Bible 77")                # a narrower search: the note goes
+    pump(app, lambda: len(w.rows) < 150)
+    assert len(w.rows) == 11 and "first 150" not in w.message.text()
+    w.close()
+
+
+def test_file_errors_are_shown_in_plain_words():
+    from lpbibles.ui.main_window import plain_error
+    assert "Choose another folder" in plain_error(PermissionError(13, "Permission denied", "/x/.KJV.part"))
+    assert plain_error(OSError(28, "No space left on device")) == "The disk is full."
+    assert "Errno" not in plain_error(OSError(5, "Input/output error", "C:\\x"))
+    assert plain_error(BibleError("This Bible is damaged.")) == "This Bible is damaged."

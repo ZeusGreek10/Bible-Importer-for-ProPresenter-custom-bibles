@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -238,8 +239,11 @@ class HelperDialog(QDialog):
     def make_ready(self) -> None:
         try:
             self.prepared = wh.prepare(self.bibles, self.chosen_codes(), self.ready_dir, self.bibles_folder)
-        except (BibleError, OSError) as e:
+        except BibleError as e:
             self.choice_error.setText(str(e))
+            return
+        except Exception:
+            self.choice_error.setText("The files could not be made. Check that the folder is still there, then try again.")
             return
         self._ready_page()
 
@@ -346,7 +350,8 @@ class HelperDialog(QDialog):
         left.append(self._button("Open the ready folder", lambda: _open(p.ready_dir)))
         if p.new_pref is None:
             left.append(self._button("Copy the lines", self.copy_lines))
-        done = self._button("Done", self.accept, "go")
+        self._ready_shown = time.monotonic()
+        done = self._button("Done", self._done_clicked, "go")
         done.setMinimumWidth(110)
         self._set_footer(left, done)
 
@@ -354,6 +359,11 @@ class HelperDialog(QDialog):
     def _say(label: QLabel, text: str) -> None:
         label.setText(text)
         label.setVisible(bool(text))
+
+    def _done_clicked(self) -> None:
+        if time.monotonic() - self._ready_shown < 1.0:
+            return                              # the second click of a double click on "Make them ready"
+        self.accept()
 
     def open_both(self) -> None:
         if self.prepared:

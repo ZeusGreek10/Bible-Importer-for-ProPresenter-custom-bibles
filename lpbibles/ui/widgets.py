@@ -272,6 +272,7 @@ class ListItemRow(QFrame):
         self.name = QLabel(item.name)
         self.name.setTextFormat(Qt.PlainText)
         self.name.setObjectName("iname")
+        self.setToolTip(f"{item.short}: {item.name}")
         self.name.setWordWrap(True)
         self.name.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
         self.sub = QLabel("")
