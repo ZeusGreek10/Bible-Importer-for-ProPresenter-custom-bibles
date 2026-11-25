@@ -114,6 +114,8 @@ class Library:
                          direction=doc.get("direction", "ltr"), copyright=item.copyright,
                          verses=from_dense(doc.get("books", {})))
         pb.book_names = {int(k): tuple(v) for k, v in (doc.get("book_names") or {}).items()}
+        pb.usx = {k: v.encode("utf-8") for k, v in (doc.get("usx") or {}).items()}
+        pb.source_meta = doc.get("source_meta") or {}
         return pb
 
     # ---- writing --------------------------------------------------------------------------------
@@ -134,6 +136,9 @@ class Library:
         doc = {"format": FORMAT, "code": code, "name": pb.name, "short": pb.short, "language": pb.language,
                "lang_code": pb.lang_code, "direction": pb.direction, "books": pb.dense(),
                "book_names": {str(k): list(v) for k, v in pb.book_names.items()}}
+        if pb.usx and pb.source_meta:     # Bible.com: what the ProPresenter file is made from
+            doc["usx"] = {k: v.decode("utf-8") for k, v in pb.usx.items()}
+            doc["source_meta"] = pb.source_meta
         _atomic_write(self.folder / f"{code}.json", json.dumps(doc, ensure_ascii=False, separators=(",", ":")))
         item = Installed(code=code, name=pb.name, short=pb.short or pb.name[:10], language=pb.language,
                          lang_code=pb.lang_code, source=source, source_key=source_key,

@@ -17,7 +17,6 @@ import re
 import shutil
 import sys
 import tempfile
-import zipfile
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -27,100 +26,74 @@ from lxml.etree import Element, SubElement, tostring
 
 from .books import BOOKS
 from .model import BibleError, ParsedBible
+from .biblecom_pp import construct_metadataxmls, toxml
 from .paths import resource_path
 
 MAC_RELATIVE = Path("Library") / "Application Support" / "RenewedVision" / "RVBibles" / "v2"
 
 
-def _xml(elem) -> bytes:
-    return tostring(elem, encoding="utf-8", xml_declaration=True)
-
-
 def usx_book(pb: ParsedBible, book: int) -> bytes:
+    """One book as USX, in the same form the original tool wrote (one <para> per verse)."""
     code = BOOKS[book - 1][0]
     usx = Element("usx", version="2.0")
-    SubElement(usx, "book", code=code, style="id").text = code
+    SubElement(usx, "book", code=code).text = code
     for c in sorted(pb.verses[book]):
         SubElement(usx, "chapter", number=str(c), style="c")
         for v, text in sorted(pb.verses[book][c].items()):
             para = SubElement(usx, "para", style="p")
             SubElement(para, "verse", number=str(v), style="v").tail = text
-    return _xml(usx)
+    return toxml(usx)
 
 
-def metadata_xml(pb: ParsedBible) -> bytes:
-    tree = etree.parse(resource_path("metadata.xml"))
-    name = pb.name or pb.short
-    ident = tree.xpath("//identification")[0]
-    SubElement(ident, "name").text = name
-    SubElement(ident, "nameLocal").text = name
-    SubElement(ident, "abbreviation").text = pb.short
-    SubElement(ident, "abbreviationLocal").text = pb.short
-    lang = tree.xpath("//language")[0]
-    SubElement(lang, "iso").text = pb.lang_code or "eng"
-    SubElement(lang, "name").text = pb.language or "English"
-    SubElement(lang, "scriptDirection").text = pb.direction or "ltr"
-    # the template names a Dutch Bible here; describe this one instead
-    book_list = tree.xpath("//bookList")[0]
-    for tag, value in (("name", name), ("nameLocal", name), ("abbreviation", pb.short),
-                       ("abbreviationLocal", pb.short), ("description", name)):
-        el = book_list.find(tag)
-        if el is not None:
-            el.text = value
-    holder = tree.xpath("//rightsHolderAbbreviation")
-    if holder:
-        holder[0].text = pb.short
-    names_el = tree.xpath("//bookNames")[0]
-    books_el = tree.xpath("//bookList/books")[0]
-    seen_short: set[str] = set()
+def synthetic_metadata(pb: ParsedBible) -> dict:
+    """The Bible.com-style details `construct_metadataxmls` needs, for a Bible that did not come from Bible.com."""
+    books = []
     for b in sorted(pb.verses):
-        code = BOOKS[b - 1][0]
-        long_, short, abbr = pb.name_of(b, 0), pb.name_of(b, 1), pb.name_of(b, 2)
-        if short in seen_short:          # two books with one short name confuse ProPresenter
-            short = long_
-        seen_short.add(short)
-        el = SubElement(names_el, "book", code=code)
-        SubElement(el, "long").text = long_
-        SubElement(el, "short").text = short
-        SubElement(el, "abbr").text = abbr
-        SubElement(books_el, "book", code=code)
-    return _xml(tree.getroot())
-
-
-def rvmetadata_xml(pb: ParsedBible, abbreviation: Optional[str] = None) -> bytes:
-    root = Element("RVBibleMetdata")     # (sic) the spelling ProPresenter uses
-    SubElement(root, "name").text = pb.name or pb.short
-    SubElement(root, "abbreviation").text = abbreviation or pb.short
-    SubElement(root, "displayAbbreviation").text = pb.short
-    SubElement(root, "version").text = "1"
-    SubElement(root, "revision").text = "0"
-    SubElement(root, "licenseType").text = "0"
-    SubElement(root, "license")
-    return _xml(root)
+        books.append({"usfm": BOOKS[b - 1][0], "canon": "ot" if b <= 39 else "nt", "human": pb.name_of(b, 1),
+                      "human_long": pb.name_of(b, 0), "abbreviation": pb.name_of(b, 2)})
+    return {"title": pb.name or pb.short, "local_title": pb.name or pb.short, "abbreviation": pb.short,
+            "local_abbreviation": pb.short,
+            "language": {"iso_639_3": pb.lang_code or "eng", "name": pb.language or "English",
+                         "text_direction": pb.direction or "ltr"},
+            "books": books}
 
 
 def write_files(pb: ParsedBible, folder: Path, abbreviation: Optional[str] = None) -> None:
-    """Writes the three parts of a Bible into a folder."""
+    """Writes the three parts of a Bible into a folder.
+
+    A Bible from Bible.com uses the USX and details saved when it was downloaded (exactly the original tool's
+    output); any other Bible is written in the same form from its verses.
+    """
     pb.validate()
     (folder / "USX_1").mkdir(parents=True, exist_ok=True)
-    for b in sorted(pb.verses):
-        (folder / "USX_1" / f"{BOOKS[b - 1][0]}.usx").write_bytes(usx_book(pb, b))
-    (folder / "metadata.xml").write_bytes(metadata_xml(pb))
-    (folder / "rvmetadata.xml").write_bytes(rvmetadata_xml(pb, abbreviation))
+    if pb.usx and pb.source_meta:
+        for code, data in pb.usx.items():
+            (folder / "USX_1" / f"{code}.usx").write_bytes(data)
+        meta = pb.source_meta
+    else:
+        for b in sorted(pb.verses):
+            (folder / "USX_1" / f"{BOOKS[b - 1][0]}.usx").write_bytes(usx_book(pb, b))
+        meta = synthetic_metadata(pb)
+    construct_metadataxmls(str(folder), meta)
+    if abbreviation:
+        # Windows "take the place of a free Bible": same as the original (the abbreviation of the Bible to replace)
+        rvmetadata = folder / "rvmetadata.xml"
+        xtree = etree.parse(str(rvmetadata))
+        xtree.xpath("//abbreviation")[0].text = abbreviation
+        rvmetadata.write_bytes(toxml(xtree))
 
 
 def write_rvbible(pb: ParsedBible, path: Path) -> Path:
-    """Makes a .rvbible file (a zip of the three parts). The file appears only when it is complete."""
+    """Makes a .rvbible file (a zip of the three parts, made as the original tool made it).
+    The file appears only when it is complete."""
     path = Path(path)
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp) / "bible"
         write_files(pb, folder)
-        part = path.with_name(path.name + ".part")
-        with zipfile.ZipFile(part, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in sorted(folder.rglob("*")):
-                if f.is_file():
-                    z.write(f, f.relative_to(folder).as_posix())
-        os.replace(part, path)
+        part = shutil.make_archive(str(Path(tmp) / "archive"), "zip", str(folder))
+        tmp_target = path.with_name(path.name + ".part")
+        shutil.copyfile(part, tmp_target)
+        os.replace(tmp_target, path)
     return path
 
 

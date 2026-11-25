@@ -1,11 +1,13 @@
 """Bible.com (YouVersion) source: licensed Bibles, for churches that have the right to use them.
 
+Works as the original command-line tool did: the same requests, with the same headers (they make the
+requests look like they come from a web browser), the same two ways to get a Bible
+  1. the offline zip, when the Bible has one;
+  2. otherwise chapter by chapter, with retries and a small pause between chapters,
+and the same ProPresenter files at the end (headings, verse ranges and all books kept; see biblecom_pp.py).
+
 Not verified against the live site from the build server (it refuses datacenter addresses), so every
 failure is reported in plain words and never touches the Bibles that are already saved.
-
-Two ways to get a Bible, as in the original command-line tool:
-  1. the offline zip, when the Bible has one;
-  2. otherwise chapter by chapter, with retries and a small pause between chapters.
 """
 
 from __future__ import annotations
@@ -23,7 +25,8 @@ from typing import Callable, Optional
 import requests
 
 from . import netutil
-from .biblecom_html import add_chapter, decode_yves_bytes
+from .biblecom_html import decode_yves_bytes, usx_verses
+from .biblecom_pp import build_usx, chapter_key, slim_metadata
 from .books import book_number
 from .model import BibleError, Entry, ParsedBible
 
@@ -33,7 +36,13 @@ VERSIONS_URL = SITE + "/api/bible/versions"
 METADATA_URL = "https://nodejs.bible.com/api/bible/version/3.3"
 CHAPTER_URL = SITE + "/_next/data/{api_id}/en/bible/{bible_id}/{usfm}.{abbr}.json"
 
-HEADERS = {"Accept": "application/json"}
+# The headers of the original tool (bible_import.py), sent with every request to Bible.com.
+HEADERS = {
+    "Referer": "https://bible.com/",
+    "Origin": "https://bible.com",
+    "Accept": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36"
+}
 
 #: seconds to wait between chapters when a Bible is read page by page (be kind to the server)
 CHAPTER_PAUSE = 0.4
@@ -160,6 +169,7 @@ def download(entry: Entry, cancel: Optional[threading.Event] = None,
         progress(0, total, None)
     rate = _Rate()
     done = 0
+    pages: dict[str, dict[int, str]] = {}      # book code > chapter number > chapter page (HTML)
 
     def chapter_done() -> None:
         nonlocal done
@@ -170,34 +180,47 @@ def download(entry: Entry, cancel: Optional[threading.Event] = None,
     offline = meta.get("offline")
     if isinstance(offline, dict) and offline.get("url"):
         try:
-            raw = netutil.download("https:" + offline["url"], cancel=cancel)
-            _read_offline_zip(raw, pb, chapter_done, cancel)
+            raw = netutil.download("https:" + offline["url"], cancel=cancel, headers=HEADERS)
+            _read_offline_zip(raw, pages, chapter_done, cancel)
         except (zipfile.BadZipFile, netutil.NetworkError) as e:
             if isinstance(e, netutil.NetworkError) and e.offline:
                 raise
-            pb.verses.clear()          # start again page by page
+            pages.clear()          # start again page by page
             done = 0
             rate = _Rate()
-            _read_pages(meta, entry, pb, chapter_done, cancel, pause)
+            _read_pages(meta, entry, pb, pages, chapter_done, cancel, pause)
     else:
-        _read_pages(meta, entry, pb, chapter_done, cancel, pause)
+        _read_pages(meta, entry, pb, pages, chapter_done, cancel, pause)
+    assemble(pb, pages, meta)
     pb.validate()
     return pb
 
 
-def _read_offline_zip(raw: bytes, pb: ParsedBible, chapter_done, cancel) -> None:
+def assemble(pb: ParsedBible, pages: dict, meta: dict) -> None:
+    """USX of every book as the original tool made it, and the verses of the usual 66 books read from it."""
+    for code, (data, root) in build_usx(pages).items():
+        pb.usx[code] = data
+        num = book_number(code)
+        if num:
+            usx_verses(root, num, pb)
+    pb.source_meta = slim_metadata(meta)
+
+
+def _read_offline_zip(raw: bytes, pages: dict, chapter_done, cancel) -> None:
     zf = zipfile.ZipFile(io.BytesIO(raw))
     for name in sorted(zf.namelist()):
         if not name.lower().endswith(".yves"):
             continue
         netutil.check(cancel)
         p = PurePosixPath(name)
-        html = decode_yves_bytes(zf.read(name))
-        add_chapter(html, p.parent.name, pb)
+        page = decode_yves_bytes(zf.read(name))
+        key = chapter_key(f"{p.parent.name}.{p.name.split('.')[0]}")
+        if key:
+            pages.setdefault(key[0], {})[key[1]] = page
         chapter_done()
 
 
-def _read_pages(meta: dict, entry: Entry, pb: ParsedBible, chapter_done, cancel, pause: float) -> None:
+def _read_pages(meta: dict, entry: Entry, pb: ParsedBible, pages: dict, chapter_done, cancel, pause: float) -> None:
     books = meta.get("books") or []
     if not books or not (books[0].get("chapters") or []):
         raise BibleError("Bible.com did not list the chapters of this Bible.")
@@ -218,7 +241,9 @@ def _read_pages(meta: dict, entry: Entry, pb: ParsedBible, chapter_done, cancel,
             info = props.get("chapterInfo")
         if not info:
             raise netutil.NetworkError("Bible.com changed its pages. Import a file instead.")
-        add_chapter(html.unescape(str(info.get("content") or "")), usfm.split(".")[0], pb)
+        key = chapter_key(str((props.get("params") or {}).get("usfm") or usfm))
+        if key:
+            pages.setdefault(key[0], {})[key[1]] = html.unescape(str(info.get("content") or ""))
         chapter_done()
         nxt = info.get("next")
         usfm = nxt["usfm"][0] if nxt else None

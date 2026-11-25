@@ -33,7 +33,7 @@ Ready-made apps: Actions tab › **Build the Bible Importer app** › Run workfl
 
 ### Tests and design
 ```
-pip install -r requirements-gui.txt pytest
+pip install -r requirements-gui.txt -r requirements.txt pytest
 QT_QPA_PLATFORM=offscreen python -m pytest tests
 ```
 The drawings the window was built from are in `design/` (PNG and HTML). `python tools/screenshots.py OUTPUT_FOLDER` saves screenshots of the window with sample data, to compare with them.
@@ -41,7 +41,9 @@ The drawings the window was built from are in `design/` (PNG and HTML). `python 
 What the tests cover: the file readers, the catalogs and their saved lists, the library, both exports (read back again), the ProPresenter install on Mac and Windows folders (fake folders), the Bible.com reader (sample pages and a fake server), and the window (adding to the list, exporting for both programs, failure and retry, cancel, import, closing during an export).
 Not covered: the real Bible.com site (it was not reachable from the build server), and real ProPresenter / Live Presenter installs.
 
-The original command-line tool (`bible_import.py`) still works; it shares its chapter-reading code with the app (`lpbibles/biblecom_html.py`).
+**Bible.com Bibles are made exactly as the original tool made them.** The requests use the original's headers (they look like a web browser), and the ProPresenter file has the same USX (section headings, verse ranges like "3-4", and every book Bible.com lists, also those outside the usual 66) and the same `metadata.xml` and `rvmetadata.xml`. `tests/test_original_parity.py` runs the untouched original script (`tests/reference/bible_import_original.py`) and the app on the same chapter pages and checks that every file is identical. Bibles from the free sources and from files are written in the same form, from their verses (so they have no section headings). The Live Presenter `.json` has the 66 usual books, one text per verse.
+
+The original command-line tool (`bible_import.py`) still works; it shares its chapter-reading and file-writing code with the app (`lpbibles/biblecom_html.py`, `lpbibles/biblecom_pp.py`).
 
 ## How to automatically
 

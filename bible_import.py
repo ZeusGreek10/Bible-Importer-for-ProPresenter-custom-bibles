@@ -28,6 +28,7 @@ from prompt_toolkit.shortcuts import radiolist_dialog
 # The chapter-reading functions are shared with the Bible Importer app (lpbibles/biblecom_html.py).
 from lpbibles.biblecom_html import (decode_yves_bytes, parse_chapter, parse_verse_numbers, parse_paragraph,
                                     parse_header, cleanup_verse_contents)
+from lpbibles.biblecom_pp import toxml, construct_metadataxmls
 
 headers = {
     "Referer": "https://bible.com/",
@@ -163,10 +164,6 @@ def download_bible_chapters(location, selected_bible_id, selected_bible_abbr, bi
                 else:
                     raise
 
-def toxml(elem):
-    """Return a XML string for the Element."""
-    return tostring(elem, encoding='utf-8')
-
 def process_bible_files(location, usx_folder):
     all_chapters_data = {}
     # find valid chapter files
@@ -204,57 +201,6 @@ def process_bible_files(location, usx_folder):
 def retrieve_bible_metadata(book_id):
     book_metadata_resp = get(f"https://nodejs.bible.com/api/bible/version/3.3?id={book_id}")
     return book_metadata_resp.json()
-
-def construct_metadataxmls(output_file_loc, book_metadata):
-    metadata = resource_path("metadata.xml")
-    xml_tree = ElementTree.parse(metadata)
-
-    identification_el = xml_tree.xpath("//identification")[0]
-    SubElement(identification_el, "name").text = book_metadata["title"]
-    SubElement(identification_el, "nameLocal").text = book_metadata["local_title"]
-    SubElement(identification_el, "abbreviation").text = book_metadata["abbreviation"]
-    SubElement(identification_el, "abbreviationLocal").text = book_metadata["local_abbreviation"]
-
-    language_el = xml_tree.xpath("//language")[0]
-    SubElement(language_el, "iso").text = book_metadata["language"]['iso_639_3']
-    SubElement(language_el, "name").text = book_metadata["language"]['name']
-    SubElement(language_el, "scriptDirection").text = book_metadata["language"]['text_direction']
-
-    book_names_el = xml_tree.xpath("//bookNames")[0]
-    books_el = xml_tree.xpath("//bookList/books")[0]
-    unique_short_list = []
-
-    for book in book_metadata["books"]:
-        book_code = book['usfm']
-        canon = book['canon']
-        short = book['human']
-        long = book['human_long']
-        abbr = book['abbreviation']
-        book_el = SubElement(book_names_el, "book", code=book_code)
-        SubElement(book_el, 'long').text = long
-        SubElement(book_el, 'short').text = short if short not in unique_short_list else long
-        SubElement(book_el, 'abbr').text = abbr
-
-        SubElement(books_el, "book", code=book_code)
-
-        unique_short_list.append(short)
-
-    metadataxml_output = os.path.join(output_file_loc, "metadata.xml")
-    with open(metadataxml_output, 'wb') as handle:
-        handle.write(toxml(xml_tree))
-
-    root = Element("RVBibleMetdata")
-    SubElement(root, "name").text = book_metadata["local_title"]
-    SubElement(root, "abbreviation").text = book_metadata["abbreviation"]
-    SubElement(root, "displayAbbreviation").text = book_metadata["local_abbreviation"]
-    SubElement(root, "version").text = "1"
-    SubElement(root, "revision").text = "0"
-    SubElement(root, "licenseType").text = "0"
-    SubElement(root, "license")
-
-    rvmetadataxml_output = os.path.join(output_file_loc, "rvmetadata.xml")
-    with open(rvmetadataxml_output, 'wb') as handle:
-        handle.write(toxml(root))
 
 def move_rvbible_propresenter_folder(rvbible_loc):
     system_str = platform.system()

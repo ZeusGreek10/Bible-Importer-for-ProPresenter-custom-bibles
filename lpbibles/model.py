@@ -54,6 +54,10 @@ class ParsedBible:
     verses: dict[int, dict[int, dict[int, str]]] = field(default_factory=dict)
     # book number > (long name, short name, abbreviation) in the Bible's own language
     book_names: dict[int, tuple[str, str, str]] = field(default_factory=dict)
+    # Bible.com Bibles only: the USX of every book as the original tool made it (headings, verse ranges and all
+    # books kept) and the Bible.com details it needs. When these are there, the ProPresenter file is made from them.
+    usx: dict[str, bytes] = field(default_factory=dict)
+    source_meta: dict = field(default_factory=dict)
 
     def add(self, book: int, chapter: int, verse: int, text: str) -> None:
         t = clean_text(text)

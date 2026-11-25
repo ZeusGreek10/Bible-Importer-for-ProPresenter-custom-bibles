@@ -138,7 +138,8 @@ def test_rvbible_has_the_three_parts(tmp_path):
         assert b"<!--" not in z.read("metadata.xml")                    # comments crash ProPresenter on Mac
         meta = etree.fromstring(z.read("metadata.xml"))
         assert meta.xpath("//identification/name")[0].text == "Test Bible"
-        assert meta.xpath("//bookList/name")[0].text == "Test Bible"      # not the template's Dutch name
+        # the original leaves the template's own text in <bookList> (it works in ProPresenter); so do we
+        assert meta.xpath("//bookList/name")[0].text == "Nieuwe Bijbelvertaling"
         assert len(meta.xpath("//bookNames/book")) == 66
         usx = etree.fromstring(z.read("USX_1/JHN.usx"))
         assert usx.xpath("//chapter")[1].get("number") == "2"
