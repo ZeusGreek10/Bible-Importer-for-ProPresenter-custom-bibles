@@ -152,6 +152,17 @@ class Library:
         return item
 
     @_locked
+    def disk_size(self) -> int:
+        """Bytes the saved Bibles take on the disk."""
+        total = 0
+        for item in self.items:
+            try:
+                total += (self.folder / f"{item.code}.json").stat().st_size
+            except OSError:
+                pass
+        return total
+
+    @_locked
     def set_numbering(self, code: str, numbering: str) -> None:
         item = self.get(code)
         if item and numbering in NUMBERINGS:

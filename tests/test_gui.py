@@ -82,10 +82,11 @@ def pump(app, cond=lambda: False, timeout=6.0):
     return cond()
 
 
-def make(app, tmp_path, platform="win"):
+def make(app, tmp_path, platform="win", list_path=None):
     backend = Fake(tmp_path / "cache")
     settings = QSettings(str(tmp_path / "s.ini"), QSettings.IniFormat)
-    w = MainWindow(Library(tmp_path / "data"), backend, system_language="English", platform=platform, settings=settings)
+    w = MainWindow(Library(tmp_path / "data"), backend, system_language="English", platform=platform, settings=settings,
+                   list_path=list_path)
     w.folder = tmp_path / "out"
     w.show()
     assert pump(app, lambda: w.free_loaded)
@@ -418,3 +419,113 @@ def test_adding_to_propresenter_twice_keeps_the_first_file(app, tmp_path, monkey
     assert (target / "KJV.rvbible").read_bytes() == first_bytes            # the first one was not replaced
     assert w._item("getbible:kjv").note == "added to ProPresenter as KJV (2).rvbible"
     w.close()
+
+
+# ---- the ✕ on a Bible from a file, the remembered list, the cleanup ---------------------------------------
+
+def import_church_bible(app, w, tmp_path, name="Church Bible", short="CB"):
+    src = export_lp.write(bible(name, short), tmp_path / f"{short.lower()}.json")
+    n = len(w.items)
+    w.import_files([src])
+    assert pump(app, lambda: len(w.items) == n + 1)
+    return w.items[-1]
+
+
+def test_x_on_a_downloaded_bible_keeps_its_saved_copy(app, win):
+    add(win, "getbible:kjv")
+    win._go_clicked()
+    assert finished(app, win)
+    win.remove_from_list("getbible:kjv")
+    assert win.items == [] and win.library.is_installed("getbible:kjv")
+
+
+def test_x_on_a_bible_from_a_file_deletes_its_saved_copy_after_asking(app, win, tmp_path, monkeypatch):
+    item = import_church_bible(app, win, tmp_path)
+    code = item.code
+    assert win.item_rows[item.key].remove.toolTip().startswith("Delete this Bible")
+    answers = iter([False, True])
+    asked = []
+    monkeypatch.setattr(MainWindow, "_confirm_delete", lambda self, it, from_file: (asked.append(from_file) or next(answers)))
+    win.remove_from_list(item.key)                          # "Keep it": nothing happens
+    assert win.items == [item] and win.library.get(code) is not None
+    win.remove_from_list(item.key)                          # "Delete": gone from the list and from the disk
+    assert asked == [True, True] and win.items == [] and win.library.get(code) is None
+    assert not (win.library.folder / f"{code}.json").exists()
+
+
+def test_the_list_is_remembered(app, tmp_path):
+    lp = tmp_path / "list.json"
+    w = make(app, tmp_path, list_path=lp)
+    add(w, "getbible:kjv")
+    w._go_clicked()
+    assert finished(app, w)
+    add(w, "getbible:web")                                  # in the list, not downloaded
+    file_item = import_church_bible(app, w, tmp_path)
+    w.seg.buttons["lp"].click()
+    row = w.item_rows["getbible:web"]
+    row.picker.setCurrentIndex(row.picker.findData("synodal"))
+    w.close()
+
+    w2 = make(app, tmp_path, list_path=lp)                  # a new start of the app
+    assert [(i.short, i.status) for i in w2.items] == [("KJV", "saved"), ("WEB", "waiting"), ("CB", "saved")]
+    assert w2._item("getbible:kjv").note == "saved on this computer" and w2._item(file_item.key).note == "from a file"
+    assert w2._item("getbible:web").numbering == "synodal"
+    assert not w2.item_rows["getbible:kjv"].trash.isHidden() and w2.item_rows["getbible:web"].trash.isHidden()
+    assert w2.rows["getbible:kjv"].add.isHidden() and not w2.rows["getbible:kjv"].inlist.isHidden()   # "In list ✓"
+    assert w2.go.text() == "Export 3 Bibles" or w2.go.text().startswith("Export")
+    w2.close()
+
+
+def test_a_bible_from_a_file_without_its_saved_copy_is_not_brought_back(app, tmp_path):
+    lp = tmp_path / "list.json"
+    w = make(app, tmp_path, list_path=lp)
+    item = import_church_bible(app, w, tmp_path)
+    (w.library.folder / f"{item.code}.json").unlink()      # the saved copy is gone from the disk
+    w.close()
+    w2 = make(app, tmp_path, list_path=lp)
+    assert w2.items == []
+    w2.close()
+
+
+def test_a_damaged_list_file_is_ignored(app, tmp_path):
+    lp = tmp_path / "list.json"
+    lp.write_text("{ not json", encoding="utf-8")
+    w = make(app, tmp_path, list_path=lp)
+    assert w.items == []
+    add(w, "getbible:kjv")                                  # and it is simply written again
+    assert "getbible:kjv" in lp.read_text(encoding="utf-8")
+    w.close()
+
+
+def test_cleanup_deletes_every_saved_copy(app, win, tmp_path, monkeypatch):
+    assert win.cleanup_btn.isHidden()                       # nothing saved: no button
+    add(win, "getbible:kjv")
+    add(win, "getbible:web")
+    win._go_clicked()
+    assert finished(app, win)
+    file_item = import_church_bible(app, win, tmp_path)
+    win.remove_from_list("getbible:kjv")                    # saved, but no longer in the list
+    assert not win.cleanup_btn.isHidden() and win.cleanup_btn.text().startswith("Delete all saved Bibles (3 · ")
+    monkeypatch.setattr(MainWindow, "_confirm_delete_all", lambda self, n, size: False)
+    win.cleanup_btn.click()
+    assert len(win.library.items) == 3                      # "Keep them"
+    monkeypatch.setattr(MainWindow, "_confirm_delete_all", lambda self, n, size: True)
+    win.cleanup_btn.click()
+    assert win.library.items == [] and [p.name for p in win.library.folder.glob("*.json")] == ["index.json"]   # only the (empty) index is left
+    assert [(i.short, i.status) for i in win.items] == [("WEB", "waiting")]      # the one from a file left the list
+    assert win.cleanup_btn.isHidden() and "3 saved Bibles deleted" in win.message.text()
+    assert (tmp_path / "out" / "WEB.rvbible").exists()      # what was exported is not touched
+
+
+def test_cleanup_is_off_while_exporting(app, win):
+    add(win, "getbible:kjv")
+    win._go_clicked()
+    assert finished(app, win)
+    win.backend.slow.add("getbible:slow")
+    add(win, "getbible:slow")
+    win._go_clicked()
+    assert pump(app, lambda: win._item("getbible:slow").status == "busy")
+    assert not win.cleanup_btn.isEnabled()
+    win._go_clicked()
+    pump(app, lambda: not win.exporting)
+    assert win.cleanup_btn.isEnabled()

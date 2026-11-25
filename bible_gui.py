@@ -52,7 +52,7 @@ def main() -> int:
     app.setApplicationName("Bible Importer")
     app.setWindowIcon(QIcon(paths.resource_path(os.path.join("icon", "icon.png"))))
     app.setStyleSheet(theme.stylesheet())
-    window = MainWindow(Library(paths.data_dir()), Backend(paths.cache_dir()))
+    window = MainWindow(Library(paths.data_dir()), Backend(paths.cache_dir()), list_path=paths.data_dir() / "list.json")
     window.show()
     if self_test:
         QTimer.singleShot(2500, app.quit)

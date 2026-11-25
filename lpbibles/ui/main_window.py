@@ -22,6 +22,7 @@ from ..model import BibleError, Entry, ParsedBible
 from ..netutil import Cancelled, NetworkError
 from . import theme
 from .dialogs import ExplainDialog
+from .listfile import load_list, save_list
 from .widgets import (BibleRow, DropArea, LanguageList, ListItem, ListItemRow, Segmented, fmt_eta, plural,
                       step_header)
 from .workers import Runner
@@ -44,6 +45,12 @@ def safe_name(text: str) -> str:
     return t or "Bible"
 
 
+def human_size(n: int) -> str:
+    if n >= 1_000_000:
+        return f"{round(n / 1_000_000)} MB"
+    return f"{max(1, round(n / 1000))} KB"
+
+
 def delete_message(name: str, from_file: bool) -> str:
     """What the question before deleting a saved copy says (plain words: what goes, and what stays)."""
     again = ("It came from a file, so it can only come back by choosing the file again." if from_file
@@ -63,7 +70,8 @@ class MainWindow(QMainWindow):
     export_event = Signal(str, str, str, float, str)
 
     def __init__(self, library: Library, backend: Backend, system_language: Optional[str] = None,
-                 platform: Optional[str] = None, settings: Optional[QSettings] = None):
+                 platform: Optional[str] = None, settings: Optional[QSettings] = None,
+                 list_path: Optional[Path] = None):
         super().__init__()
         self.setWindowTitle("Bible Importer")
         self.resize(1200, 760)
@@ -94,7 +102,9 @@ class MainWindow(QMainWindow):
         self.selected: dict[str, Optional[str]] = {"free": None, "biblecom": None}
         self.searches = {"free": "", "biblecom": "", "free_lang": "", "biblecom_lang": ""}
         self.rows: dict[str, BibleRow] = {}
-        self.items: list[ListItem] = []
+        # "Your list" is remembered between launches when a file is given (the app always gives one)
+        self.list_path = Path(list_path) if list_path else None
+        self.items: list[ListItem] = load_list(self.list_path, library) if self.list_path else []
         self.item_rows: dict[str, ListItemRow] = {}
         self.exporting = False
         self.export_seen: set[str] = set()
@@ -291,6 +301,13 @@ class MainWindow(QMainWindow):
         ibl.addStretch(1)
         self.items_scroll.setWidget(ib)
         pv.addWidget(self.items_scroll, 1)
+        self.cleanup_btn = QPushButton("")
+        self.cleanup_btn.setObjectName("cleanup")
+        self.cleanup_btn.setCursor(Qt.PointingHandCursor)
+        self.cleanup_btn.setToolTip("Deletes every saved copy that Bible Importer keeps on this computer. "
+                                    "Files you saved in a folder, and Bibles added to ProPresenter, are not touched.")
+        self.cleanup_btn.clicked.connect(self.delete_all_saved)
+        pv.addWidget(self.cleanup_btn, 0, Qt.AlignRight)
 
         s3, _ = step_header("3", "EXPORT FOR")
         pv.addWidget(s3)
@@ -479,6 +496,10 @@ class MainWindow(QMainWindow):
         item = self._item(key)
         if item is None:
             return
+        if item.entry is None and item.code and self.library.get(item.code) is not None:
+            # a Bible from a file lives only as its saved copy: taking it out of the list deletes that copy (after asking)
+            self.delete_saved(key)
+            return
         self._reset_done()
         self.items.remove(item)
         row = self.rows.get(key)
@@ -517,10 +538,44 @@ class MainWindow(QMainWindow):
         self._refresh_panel()
         self._finish_rows()
 
+    def _confirm_delete_all(self, count: int, size: str) -> bool:
+        text = (f"Delete all saved Bibles?\n\n{count} {'Bible' if count == 1 else 'Bibles'} saved by Bible Importer ({size}) "
+                "will be deleted from this computer. Files you saved in a folder, and Bibles already added to "
+                "ProPresenter, stay as they are.\n\nBibles you downloaded can be downloaded again. Bibles that came "
+                "from a file can only come back by choosing the file again.")
+        box = QMessageBox(QMessageBox.Question, "Delete all saved Bibles", text, QMessageBox.NoButton, self)
+        yes = box.addButton("Delete all", QMessageBox.DestructiveRole)
+        box.addButton("Keep them", QMessageBox.RejectRole)
+        box.exec()
+        return box.clickedButton() is yes
+
+    def delete_all_saved(self) -> None:
+        """The cleanup: deletes every saved copy (also those of Bibles that are no longer in the list)."""
+        if self.exporting:
+            return
+        n = len(self.library.items)
+        if not n or not self._confirm_delete_all(n, human_size(self.library.disk_size())):
+            return
+        for saved in list(self.library.items):
+            self.library.remove(saved.code)
+        for item in list(self.items):
+            if item.entry is None:
+                self.items.remove(item)           # from a file: nothing left to download
+            else:
+                item.code = ""
+                item.status = "waiting"
+                item.note = ""
+                item.fraction = None
+        self.last_done = None
+        self.set_message(f"{plural(n, 'saved Bible', 'saved Bibles')} deleted from this computer", "dim")
+        self._refresh_panel()
+        self._finish_rows()
+
     def _numbering_changed(self, key: str, value: str) -> None:
         item = self._item(key)
         if item:
             item.numbering = value
+            self._save_list()
 
     def _reset_done(self) -> None:
         """Something changed: the old 'done' marks and the done box no longer describe the list."""
@@ -559,6 +614,24 @@ class MainWindow(QMainWindow):
             self.count_label.setText(plural(len(self.items)) if self.items else "")
         self._refresh_export_block(len(pending))
         self._refresh_done_box()
+        self._refresh_cleanup()
+        if not self.exporting:
+            self._save_list()
+
+    def _refresh_cleanup(self) -> None:
+        n = len(self.library.items)
+        self.cleanup_btn.setVisible(n > 0)
+        if n:
+            self.cleanup_btn.setText(f"Delete all saved Bibles ({n} · {human_size(self.library.disk_size())})…")
+        self.cleanup_btn.setEnabled(not self.exporting)
+
+    def _save_list(self) -> None:
+        if self.list_path is None:
+            return
+        try:
+            save_list(self.list_path, self.items)
+        except OSError:
+            pass          # the list is a convenience; never stop the app for it
 
     # ---- the export block ----------------------------------------------------------------------------
 

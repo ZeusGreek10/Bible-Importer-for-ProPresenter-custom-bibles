@@ -336,6 +336,8 @@ class ListItemRow(QFrame):
         self.status.style().polish(self.status)
         self.status.setVisible(not pick and bool(text))
         self.remove.setEnabled(can_remove)
+        self.remove.setToolTip("Delete this Bible (it came from a file, so this deletes its saved copy too)"
+                               if item.entry is None and item.code else "Take it out of the list")
         # a saved copy exists (downloaded or read from a file, and processed): it can be deleted from this computer
         self.trash.setVisible(item.status in ("saved", "done") and bool(item.code))
         self.trash.setEnabled(can_delete)
