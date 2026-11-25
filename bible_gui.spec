@@ -11,7 +11,8 @@ a = Analysis(
     ['bible_gui.py'],
     pathex=[],
     binaries=[],
-    datas=[('Resources/available_bibles.json', '.'), ('Resources/metadata.xml', '.'), ('Resources/ui', 'ui')],
+    datas=[('Resources/available_bibles.json', '.'), ('Resources/metadata.xml', '.'), ('Resources/ui', 'ui'),
+           ('Resources/icon', 'icon')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -27,6 +28,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='BibleImporter',
+    icon='Resources/icon/icon.ico' if sys.platform == 'win32' else None,
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -45,7 +47,7 @@ if sys.platform == 'darwin':
     app = BUNDLE(
         coll,
         name='Bible Importer.app',
-        icon=None,
+        icon='Resources/icon/icon.icns',
         bundle_identifier='com.zeusgreek10.bibleimporter',
         info_plist={'NSHighResolutionCapable': True, 'CFBundleShortVersionString': '1.0.0'},
     )

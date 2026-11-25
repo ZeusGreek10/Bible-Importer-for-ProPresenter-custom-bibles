@@ -484,6 +484,39 @@ class MainWindow(QMainWindow):
             row.set_in_list(False)
         self._refresh_panel()
 
+    def _confirm_delete(self, item: ListItem, from_file: bool) -> bool:
+        text = (f"Delete the saved copy of {item.name} from this computer?\n\n"
+                + ("It came from a file, so it can only come back by choosing the file again." if from_file
+                   else "You can download it again later. Files you already exported are not touched."))
+        box = QMessageBox(QMessageBox.Question, "Delete saved copy", text, QMessageBox.NoButton, self)
+        yes = box.addButton("Delete", QMessageBox.DestructiveRole)
+        box.addButton("Keep it", QMessageBox.RejectRole)
+        box.exec()
+        return box.clickedButton() is yes
+
+    def delete_saved(self, key: str) -> None:
+        """Deletes the saved copy of a Bible from this computer (the files already exported are not touched)."""
+        if self.exporting:
+            return
+        item = self._item(key)
+        if item is None or not item.code or self.library.get(item.code) is None:
+            return
+        from_file = item.entry is None
+        if not self._confirm_delete(item, from_file):
+            return
+        self.library.remove(item.code)
+        if from_file:
+            self.items.remove(item)           # nothing left to download: it leaves the list
+        else:
+            item.code = ""
+            item.status = "waiting"
+            item.note = ""
+            item.fraction = None
+        self.last_done = None
+        self.set_message(f"{item.short} deleted from this computer", "dim")
+        self._refresh_panel()
+        self._finish_rows()
+
     def _numbering_changed(self, key: str, value: str) -> None:
         item = self._item(key)
         if item:
@@ -511,13 +544,15 @@ class MainWindow(QMainWindow):
             if row is None:
                 row = ListItemRow(item)
                 row.remove_clicked.connect(self.remove_from_list)
+                row.delete_clicked.connect(self.delete_saved)
                 row.numbering_changed.connect(self._numbering_changed)
                 self.item_rows[item.key] = row
                 self.items_layout.addWidget(row)
             row.setProperty("last", i == len(self.items) - 1)
             row.style().unpolish(row)
             row.style().polish(row)
-            row.apply(item, show_picker=(self.fmt == "lp" and not self.exporting), can_remove=not self.exporting)
+            row.apply(item, show_picker=(self.fmt == "lp" and not self.exporting), can_remove=not self.exporting,
+                      can_delete=not self.exporting)
         self.items_frame.setVisible(bool(self.items))
         pending = [i for i in self.items if i.status != "done"]
         if not self.exporting:
@@ -729,7 +764,7 @@ class MainWindow(QMainWindow):
             self.count_label.setText(f"Exporting {len(self.export_seen)} of {self.export_total}…")
         row = self.item_rows.get(key)
         if row:
-            row.apply(item, show_picker=False, can_remove=False)
+            row.apply(item, show_picker=False, can_remove=False, can_delete=False)
 
     def _job_progress(self, key: str, done: int, total: int, eta) -> None:
         pass  # catalog downloads are shown through the export events

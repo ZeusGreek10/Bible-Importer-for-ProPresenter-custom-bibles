@@ -7,6 +7,7 @@ import os
 import sys
 
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from lpbibles import paths
@@ -15,7 +16,7 @@ from lpbibles.library import Library
 from lpbibles.ui import theme
 from lpbibles.ui.main_window import MainWindow
 
-BUNDLED = ("metadata.xml", "available_bibles.json", os.path.join("ui", "chevron-down.svg"))
+BUNDLED = ("metadata.xml", "available_bibles.json", os.path.join("ui", "chevron-down.svg"), os.path.join("icon", "icon.png"))
 
 
 def pipeline_check() -> None:
@@ -49,6 +50,7 @@ def main() -> int:
             return 1
     app = QApplication([a for a in sys.argv if a != "--self-test"])
     app.setApplicationName("Bible Importer")
+    app.setWindowIcon(QIcon(paths.resource_path(os.path.join("icon", "icon.png"))))
     app.setStyleSheet(theme.stylesheet())
     window = MainWindow(Library(paths.data_dir()), Backend(paths.cache_dir()))
     window.show()

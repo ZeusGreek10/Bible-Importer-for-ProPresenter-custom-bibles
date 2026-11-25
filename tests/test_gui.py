@@ -7,7 +7,7 @@ import pytest
 pytest.importorskip("PySide6")
 from PySide6.QtCore import QSettings
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox
 
 from lpbibles import export_lp, export_pp, netutil
 from lpbibles.backend import Backend
@@ -329,3 +329,62 @@ def test_explanation_box(app, win):
     assert text.startswith("Name code | Bible | Language") and "RVA" in text
     assert d.copy_btn.text() == "Copied ✓"
     d.close()
+
+
+def test_delete_a_saved_copy(app, win, tmp_path, monkeypatch):
+    asked = []
+    monkeypatch.setattr(MainWindow, "_confirm_delete", lambda self, item, from_file: (asked.append(from_file) or True))
+    add(win, "getbible:kjv")
+    row = win.item_rows["getbible:kjv"]
+    assert row.trash.isHidden()                              # nothing saved yet: nothing to delete
+    win._go_clicked()
+    assert finished(app, win)
+    assert not row.trash.isHidden() and row.trash.isEnabled()
+    assert win.library.is_installed("getbible:kjv")
+    assert "saved on this computer" in [l.text() for l in win.rows["getbible:kjv"].findChildren(QLabel)]
+    row.trash.click()
+    assert asked == [False]
+    assert not win.library.is_installed("getbible:kjv")
+    assert not any((win.library.folder).glob("kjv*.json"))     # the file is gone from the disk
+    item = win._item("getbible:kjv")
+    assert item.status == "waiting" and item.code == "" and row.trash.isHidden()
+    assert (tmp_path / "out" / "KJV.rvbible").exists()         # what was already exported is not touched
+    # the list of Bibles on the left no longer says "saved on this computer" for it
+    assert "saved on this computer" not in [l.text() for l in win.rows["getbible:kjv"].findChildren(QLabel)]
+    # it can be exported again: it is downloaded again
+    win._go_clicked()
+    assert finished(app, win)
+    assert win.backend.downloads == ["getbible:kjv", "getbible:kjv"]
+
+
+def test_keep_it_when_asked(app, win, monkeypatch):
+    monkeypatch.setattr(MainWindow, "_confirm_delete", lambda self, item, from_file: False)
+    add(win, "getbible:kjv")
+    win._go_clicked()
+    assert finished(app, win)
+    win.item_rows["getbible:kjv"].trash.click()
+    assert win.library.is_installed("getbible:kjv") and win._item("getbible:kjv").status == "done"
+
+
+def test_delete_a_bible_from_a_file_takes_it_out_of_the_list(app, win, tmp_path, monkeypatch):
+    seen = []
+    monkeypatch.setattr(MainWindow, "_confirm_delete", lambda self, item, from_file: (seen.append(from_file) or True))
+    src = export_lp.write(bible("Church Bible", "CB"), tmp_path / "cb.json")
+    win.import_files([src])
+    assert pump(app, lambda: bool(win.items))
+    code = win.items[0].code
+    win.item_rows[win.items[0].key].trash.click()
+    assert seen == [True] and win.items == [] and win.library.get(code) is None
+
+
+def test_no_delete_while_exporting(app, win):
+    win.backend.slow.add("getbible:slow")
+    add(win, "getbible:kjv")
+    win._go_clicked()
+    assert finished(app, win)
+    add(win, "getbible:slow")
+    win._go_clicked()
+    assert pump(app, lambda: win._item("getbible:slow").status == "busy")
+    assert not win.item_rows["getbible:kjv"].trash.isEnabled()
+    win._go_clicked()
+    pump(app, lambda: not win.exporting)

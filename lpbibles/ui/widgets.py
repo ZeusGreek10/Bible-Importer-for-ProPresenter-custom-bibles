@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QRect, QSize, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter
+from PySide6.QtCore import QPointF, QRect, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPen
 from PySide6.QtWidgets import (QComboBox, QFrame, QGridLayout, QHBoxLayout, QLabel, QListWidget, QListWidgetItem,
                                QProgressBar, QPushButton, QSizePolicy, QStyle, QStyledItemDelegate, QVBoxLayout, QWidget)
 
@@ -214,8 +214,35 @@ class ListItem:
     done_text: str = "Exported ✓"
 
 
+class TrashButton(QPushButton):
+    """A small trash can, drawn by hand (no icon file or emoji font needed)."""
+
+    def __init__(self):
+        super().__init__("")
+        self.setObjectName("x")
+        self.setFixedSize(20, 20)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)          # the rounded square background from the style sheet
+        p = QPainter(self)
+        p.setRenderHint(QPainter.Antialiasing)
+        color = QColor(theme.ERROR if self.underMouse() and self.isEnabled() else (theme.DIM if self.isEnabled() else theme.LINE))
+        pen = QPen(color, 1.3)
+        pen.setCapStyle(Qt.RoundCap)
+        pen.setJoinStyle(Qt.RoundJoin)
+        p.setPen(pen)
+        pt = QPointF
+        p.drawLine(pt(6, 6), pt(14, 6))                      # lid
+        p.drawLine(pt(8.5, 4.5), pt(11.5, 4.5))              # handle
+        p.drawPolyline([pt(7, 8), pt(7.7, 15), pt(12.3, 15), pt(13, 8)])   # bin
+        p.drawLine(pt(9, 9.5), pt(9, 13.5))
+        p.drawLine(pt(11, 9.5), pt(11, 13.5))
+
+
 class ListItemRow(QFrame):
     remove_clicked = Signal(str)
+    delete_clicked = Signal(str)
     numbering_changed = Signal(str, str)
 
     def __init__(self, item: ListItem):
@@ -273,14 +300,19 @@ class ListItemRow(QFrame):
         self.remove.setToolTip("Take it out of the list")
         self.remove.setAccessibleName(f"Remove {item.short} from the list")
         self.remove.clicked.connect(lambda: self.remove_clicked.emit(self.key))
+        self.trash = TrashButton()
+        self.trash.setToolTip("Delete the saved copy from this computer")
+        self.trash.setAccessibleName(f"Delete the saved copy of {item.short}")
+        self.trash.clicked.connect(lambda: self.delete_clicked.emit(self.key))
         g.addWidget(chipcell, 0, 0)
         g.addWidget(mid, 0, 1)
         g.addWidget(right, 0, 2)
-        g.addWidget(self.remove, 0, 3, Qt.AlignVCenter)
+        g.addWidget(self.trash, 0, 3, Qt.AlignVCenter)
+        g.addWidget(self.remove, 0, 4, Qt.AlignVCenter)
         g.setColumnStretch(1, 1)
-        self.apply(item, show_picker=False, can_remove=True)
+        self.apply(item, show_picker=False, can_remove=True, can_delete=False)
 
-    def apply(self, item: ListItem, show_picker: bool, can_remove: bool) -> None:
+    def apply(self, item: ListItem, show_picker: bool, can_remove: bool, can_delete: bool = False) -> None:
         self.name.setText(item.name)
         self.sub.setText(item.note)
         self.sub.setVisible(bool(item.note))
@@ -304,6 +336,9 @@ class ListItemRow(QFrame):
         self.status.style().polish(self.status)
         self.status.setVisible(not pick and bool(text))
         self.remove.setEnabled(can_remove)
+        # a saved copy exists (downloaded or read from a file, and processed): it can be deleted from this computer
+        self.trash.setVisible(item.status in ("saved", "done") and bool(item.code))
+        self.trash.setEnabled(can_delete)
 
 
 # ---- the format switch -------------------------------------------------------------------------------
