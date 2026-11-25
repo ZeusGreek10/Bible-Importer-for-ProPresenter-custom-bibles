@@ -1,0 +1,71 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><style>
+*{box-sizing:border-box}body{margin:0;background:#17181B;font-family:Inter,'Segoe UI','Helvetica Neue',Arial,sans-serif;color:#E8E9EC;font-size:12px}
+.win{width:1200px;height:760px;display:flex;flex-direction:column;background:#1d1e22;position:relative;overflow:hidden}
+.hd{height:54px;flex:none;background:#202226;border-bottom:1px solid #2B2E34;display:flex;align-items:center;padding:0 18px;gap:12px}
+.hd h1{margin:0;font-size:16px;font-weight:700}.hd small{color:#8C9099;font-size:12px}
+.main{flex:1;display:flex;min-height:0}
+.find{flex:1;display:flex;flex-direction:column;min-width:0}
+.panel{width:400px;flex:none;background:#202226;border-left:1px solid #3A3D44;display:flex;flex-direction:column;padding:14px 16px;gap:12px}
+.step{display:flex;align-items:center;gap:8px;font-size:10px;font-weight:800;letter-spacing:1px;color:#8C9099}
+.step i{font-style:normal;width:18px;height:18px;border-radius:50%;background:#FF8A1E;color:#111;display:flex;align-items:center;justify-content:center;font-size:10px;letter-spacing:0}
+.step b{margin-left:auto;font-weight:600;letter-spacing:0;color:#8C9099;font-size:11px}
+.tabs{height:44px;flex:none;display:flex;gap:22px;padding:0 18px;border-bottom:1px solid #3A3D44;background:#202226;align-items:flex-end}
+.tabs div{padding-bottom:10px;color:#8C9099;font-weight:600;font-size:13px}.tabs .on{color:#fff;border-bottom:2px solid #FF8A1E}
+.tabs .st{margin-left:auto;padding:0 0 12px;display:flex;gap:8px;align-items:center}
+.amb{flex:none;background:#2a2417;border-bottom:1px solid #5a4a24;color:#e8d9b0;font-size:11.5px;padding:7px 18px}
+.body{flex:1;display:flex;min-height:0}
+.lc{width:210px;flex:none;border-right:1px solid #2B2E34;background:#1a1b1e;padding:10px 0;display:flex;flex-direction:column}
+.fld{margin:0 12px 8px;background:#141518;border:1px solid #3A3D44;border-radius:7px;padding:7px 10px;color:#8C9099;font-size:12px}
+.lg{display:flex;align-items:center;padding:7px 14px 7px 16px;font-size:13px;border-left:3px solid transparent;color:#C9CCD2}
+.lg small{margin-left:auto;color:#8C9099;font-size:11px;font-weight:600}
+.lg.on{border-left-color:#FF8A1E;background:#2B2E34;color:#fff;font-weight:700}
+.rc{flex:1;min-width:0;display:flex;flex-direction:column;padding:10px 14px 0}
+.rc .fld{margin:0 0 8px}
+.lst{background:#202226;border:1px solid #2B2E34;border-radius:10px;overflow:hidden}
+.br{display:grid;grid-template-columns:1fr 54px 70px 40px 118px;gap:10px;align-items:center;padding:0 12px;min-height:36px;border-bottom:1px solid #2B2E34;font-size:12.5px}
+.br:last-child{border-bottom:none}.br b{font-weight:700;color:#fff}
+.sn{color:#8C9099;font-weight:700;font-size:11px}.sz{color:#8C9099;font-size:11px;text-align:right}
+.tg{font-size:10px;font-weight:800;padding:2px 7px;border-radius:4px;justify-self:start}
+.free{background:#34C75922;color:#34C759;border:1px solid #34C75955}.lic{background:#2a2417;color:#e8c46a;border:1px solid #5a4a24}
+.add{justify-self:end;border:1.5px solid #FF8A1E;color:#FF8A1E;font-weight:800;font-size:11px;padding:3px 12px;border-radius:7px}
+.in{justify-self:end;color:#8C9099;font-weight:700;font-size:11.5px}
+.saved{font-size:9.5px;color:#8C9099;font-weight:600;display:block;margin-top:1px}
+.msg{padding:8px 2px;font-size:11.5px;color:#8C9099}
+/* right panel */
+.items{background:#17181B;border:1px solid #2B2E34;border-radius:10px;overflow:hidden}
+.it{display:grid;grid-template-columns:62px 1fr auto 20px;gap:9px;align-items:center;padding:8px 10px;border-bottom:1px solid #2B2E34;min-height:42px}
+.it:last-child{border-bottom:none}.it .ch{font-size:11px;font-weight:700;padding:3px 8px;border-radius:5px;background:#2B2E34;color:#C9CCD2;justify-self:start}
+.it .nm{font-size:12px;line-height:1.25}.it .nm small{display:block;color:#8C9099;font-size:10.5px;margin-top:2px}
+.ok{color:#34C759;font-weight:700;font-size:11px}.wt{color:#8C9099;font-size:11px}.er{color:#FF8A6E;font-weight:700;font-size:11px}
+.x{width:20px;height:20px;border-radius:5px;background:#2B2E34;color:#8C9099;font-size:10px;display:flex;align-items:center;justify-content:center}
+.bar{height:4px;border-radius:2px;background:#3A3D44;overflow:hidden;margin-top:5px}.bar i{display:block;height:100%;background:#FF8A1E}
+.pk{background:#141518;border:1px solid #3A3D44;border-radius:6px;padding:3px 8px;font-size:10.5px;font-weight:600;color:#E8E9EC}
+.seg{display:flex;background:#2B2E34;border-radius:9px;padding:3px}.seg div{flex:1;text-align:center;padding:9px 0;border-radius:7px;color:#8C9099;font-weight:700;font-size:13px}
+.seg .on{background:#FF8A1E;color:#111}
+.hint{color:#8C9099;font-size:11.5px;line-height:1.45}
+.opt{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:1.35}
+.rad{width:15px;height:15px;border-radius:50%;border:2px solid #5a5e68;flex:none;margin-top:1px}.rad.on{border-color:#FF8A1E;background:radial-gradient(#FF8A1E 45%,transparent 50%)}
+.opt small{display:block;color:#8C9099;font-size:11px;margin-top:2px}
+.dest{display:flex;gap:8px;align-items:center}.dest .p{flex:1;background:#141518;border:1px solid #3A3D44;border-radius:6px;padding:6px 9px;font-size:11.5px;color:#C9CCD2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.btn{background:#2B2E34;color:#E8E9EC;border-radius:6px;padding:6px 12px;font-weight:700;font-size:11.5px}
+.go{background:#FF8A1E;color:#111;border-radius:9px;text-align:center;padding:13px 0;font-weight:800;font-size:14px}
+.go.dim{background:#2B2E34;color:#8C9099}.go.cancel{background:#2B2E34;color:#E8E9EC}
+.spacer{flex:1}
+.done{background:#173322;border:1px solid #34C75955;border-radius:10px;padding:12px 14px}.done b{color:#34C759;font-size:13px}.done div{color:#C9CCD2;font-size:11.5px;margin-top:4px;line-height:1.45}
+.warn{background:#2a2417;border:1px solid #5a4a24;border-radius:10px;padding:10px 12px;color:#e8d9b0;font-size:11.5px;line-height:1.45}
+.dz{border:2px dashed #3A3D44;border-radius:14px;margin:14px;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center}
+.dz .ib{background:#2B2E34;border-radius:8px;padding:9px 20px;font-weight:700;font-size:13px}.dz p{margin:0;color:#C9CCD2;font-size:12.5px;line-height:1.5}.dz small{color:#8C9099;font-size:11px}
+.ov{position:absolute;inset:0;background:rgba(10,11,13,.68);z-index:3}
+.dlg{position:absolute;left:300px;top:190px;width:600px;background:#202226;border:1px solid #3A3D44;border-radius:14px;box-shadow:0 20px 60px #000a;z-index:5;padding:20px 22px;display:flex;flex-direction:column;gap:12px}
+.dlg h2{margin:0;font-size:16px}.sel{background:#141518;border:1px solid #3A3D44;border-radius:6px;padding:8px 10px;font-size:12px;margin-left:24px}
+.help{display:flex;gap:8px;align-items:center;color:#E8E9EC;font-size:12px;font-weight:600}
+.q{width:22px;height:22px;border-radius:50%;background:#2B2E34;border:1.5px solid #5a5e68;color:#E8E9EC;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center;flex:none}
+.xp{position:absolute;left:190px;top:34px;width:820px;background:#202226;border:1px solid #3A3D44;border-radius:14px;box-shadow:0 20px 60px #000a;z-index:5;display:flex;flex-direction:column}
+.xp .h{display:flex;align-items:center;gap:10px;padding:14px 20px;border-bottom:1px solid #2B2E34}.xp .h b{font-size:16px}.xp .h .x{margin-left:auto}
+.xp .bd{padding:14px 20px 4px;display:flex;flex-direction:column;gap:12px}
+.xp h3{margin:0;font-size:10px;font-weight:800;letter-spacing:1px;color:#8C9099}
+.xp ul,.xp ol{margin:6px 0 0;padding-left:20px;font-size:12.2px;line-height:1.5;color:#C9CCD2}.xp li{margin-bottom:4px}.xp li b{color:#fff}
+.xp code{background:#141518;border:1px solid #3A3D44;border-radius:4px;padding:1px 5px;font-size:11.5px;color:#e8c46a}
+.xp .ft{display:flex;gap:10px;align-items:center;padding:12px 20px 16px;border-top:1px solid #2B2E34;margin-top:6px}
+.nt{position:absolute;background:#FF8A1E;color:#111;font-weight:700;font-size:12px;padding:6px 10px;border-radius:6px;box-shadow:0 3px 10px #0008;max-width:250px;z-index:20;line-height:1.35}
+</style></head><body><div class="win"><div class="hd"><h1>Bible Importer</h1><small>Get Bibles and save them for ProPresenter or Live Presenter</small></div><div class="main"><div class="find"><div class="tabs"><div class="on">Free Bibles</div><div class="">Bible.com</div><div class="">From a file</div><div class="st"><span class="step" style="margin:0"><i>1</i>FIND BIBLES</span></div></div><div class="body"><div class="lc"><div class="fld">⌕ Search languages</div><div class="lg on">English<small>12</small></div><div class="lg">Русский<small>4</small></div><div class="lg">Nederlands<small>3</small></div><div class="lg">Español<small>6</small></div><div class="lg">Deutsch<small>5</small></div><div class="lg">Ελληνικά<small>4</small></div><div class="lg">Français<small>5</small></div><div class="lg">Português<small>4</small></div><div class="lg">Українська<small>2</small></div><div class="lg">中文<small>3</small></div></div><div class="rc"><div class="fld">⌕ Search Bibles</div><div class="lst"><div class="br"><div><b>American Standard Version</b></div><span class="sn">ASV</span><span class="tg free">Free</span><span class="sz">3 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>Berean Standard Bible</b></div><span class="sn">BSB</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="in">In list ✓</span></div><div class="br"><div><b>Bible in Basic English</b></div><span class="sn">BBE</span><span class="tg free">Free</span><span class="sz">3 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>Darby Bible</b></div><span class="sn">DARBY</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="in">In list ✓</span></div><div class="br"><div><b>Douay-Rheims 1899</b></div><span class="sn">DRA</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>English Revised Version</b></div><span class="sn">ERV</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>Geneva Bible 1599</b></div><span class="sn">GNV</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>King James Version</b><span class="saved">saved on this computer</span></div><span class="sn">KJV</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="in">In list ✓</span></div><div class="br"><div><b>Webster&#x27;s Bible</b></div><span class="sn">WBT</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>World English Bible</b><span class="saved">saved on this computer</span></div><span class="sn">WEB</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>World Messianic Bible</b></div><span class="sn">WMB</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div><div class="br"><div><b>Young&#x27;s Literal Translation</b></div><span class="sn">YLT</span><span class="tg free">Free</span><span class="sz">4 MB</span><span class="add">＋ Add</span></div></div><div class="msg"></div></div></div></div><div class="panel"><div class="step"><i>2</i>YOUR LIST<b>2 Bibles</b></div><div class="items"><div class="it"><span class="ch">KJV</span><div class="nm">King James Version<small>KJV.rvbible</small></div><span class="ok">Exported ✓</span><span class="x">✕</span></div><div class="it"><span class="ch">NBV21</span><div class="nm">Nieuwe Bijbelvertaling 2021<small>NBV21.rvbible</small></div><span class="ok">Exported ✓</span><span class="x">✕</span></div></div><div class="done"><b>✓ 2 Bibles saved</b><div>Saved in <b style="color:#E8E9EC">Documents/Bible Importer</b><br>To use them in ProPresenter you still need to add them: see the ? below.</div><div style="display:flex;gap:8px;margin-top:10px"><span class="btn">Open the folder</span><span class="btn">How to add them to ProPresenter</span></div></div><div class="spacer"></div><div class="step"><i>3</i>EXPORT FOR</div><div class="seg"><div class="on">ProPresenter</div><div class="">Live Presenter</div></div><div class="hint">One <b style="color:#E8E9EC">.rvbible</b> file for each Bible, saved in a folder.</div><div class="dest"><div class="p">📁 Documents/Bible Importer</div><div class="btn">Choose…</div></div><div class="help"><span class="q">?</span>How do I add them to ProPresenter on Windows?</div><div class="go dim">Export 2 Bibles</div></div></div><div class="nt" style="left:450px;top:640px;max-width:320px">After saving for ProPresenter on Windows, the done box points to the explanation</div></div></body></html>
